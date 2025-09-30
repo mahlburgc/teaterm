@@ -10,10 +10,148 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/textarea"
+	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+
 	"github.com/fatih/color"
 	"go.bug.st/serial"
 	"go.bug.st/serial/enumerator"
 )
+
+var (
+	cursorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("212"))
+
+	cursorLineStyle = lipgloss.NewStyle().
+			Background(lipgloss.Color("57")).
+			Foreground(lipgloss.Color("230"))
+
+	placeholderStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("238"))
+
+	endOfBufferStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("235"))
+
+	focusedPlaceholderStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("99"))
+
+	focusedBorderStyle = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(lipgloss.Color("238"))
+
+	blurredBorderStyle = lipgloss.NewStyle().
+				Border(lipgloss.HiddenBorder())
+)
+
+const gap = "\n\n"
+
+type (
+	errMsg error
+)
+
+type model struct {
+	viewport      viewport.Model
+	messages      []string
+	textarea      textarea.Model
+	senderStyle   lipgloss.Style
+	err           error
+	port          serial.Port
+	showTimestamp bool
+}
+
+func initialModel(port serial.Port, showTimestamp bool) model {
+	ta := textarea.New()
+	ta.Placeholder = "Send a message..."
+	ta.Focus()
+	ta.Prompt = "> "
+	ta.CharLimit = 256
+	ta.Cursor.Style = cursorStyle
+	ta.FocusedStyle.Placeholder = focusedPlaceholderStyle
+	ta.BlurredStyle.Placeholder = placeholderStyle
+	ta.FocusedStyle.CursorLine = cursorLineStyle
+	ta.FocusedStyle.Base = focusedBorderStyle
+	ta.BlurredStyle.Base = blurredBorderStyle
+	ta.FocusedStyle.EndOfBuffer = endOfBufferStyle
+	ta.BlurredStyle.EndOfBuffer = endOfBufferStyle
+	ta.SetHeight(1)
+	ta.FocusedStyle.CursorLine = lipgloss.NewStyle() // Remove cursor line styling
+	ta.ShowLineNumbers = false
+	//ta.Blur()
+
+	ta.SetWidth(30)
+	ta.SetHeight(1)
+
+	vp := viewport.New(30, 5)
+	vp.SetContent(`Welcome to the serial monitor!
+Waiting for data...`)
+
+	ta.KeyMap.InsertNewline.SetEnabled(false)
+
+	return model{
+		textarea:      ta,
+		messages:      []string{},
+		viewport:      vp,
+		senderStyle:   lipgloss.NewStyle().Foreground(lipgloss.Color("5")),
+		err:           nil,
+		port:          port,
+		showTimestamp: showTimestamp,
+	}
+}
+
+func (m model) Init() tea.Cmd {
+	return textarea.Blink
+}
+
+func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var (
+		tiCmd tea.Cmd
+		vpCmd tea.Cmd
+	)
+
+	m.textarea, tiCmd = m.textarea.Update(msg)
+	m.viewport, vpCmd = m.viewport.Update(msg)
+
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.viewport.Width = msg.Width
+		m.textarea.SetWidth(msg.Width)
+		m.viewport.Height = msg.Height - m.textarea.Height() - lipgloss.Height(gap)
+
+		if len(m.messages) > 0 {
+			// Wrap content before setting it.
+			m.viewport.SetContent(lipgloss.NewStyle().Width(m.viewport.Width).Render(strings.Join(m.messages, "\n")))
+		}
+		m.viewport.GotoBottom()
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyCtrlC, tea.KeyEsc:
+			fmt.Println(m.textarea.Value())
+			return m, tea.Quit
+		case tea.KeyEnter:
+			m.messages = append(m.messages, m.senderStyle.Render("You: ")+m.textarea.Value())
+			m.viewport.SetContent(lipgloss.NewStyle().Width(m.viewport.Width).Render(strings.Join(m.messages, "\n")))
+			m.textarea.Reset()
+			m.viewport.GotoBottom()
+		}
+
+	// We handle errors just like any other message
+	case errMsg:
+		m.err = msg
+		return m, nil
+	}
+
+	return m, tea.Batch(tiCmd, vpCmd)
+}
+
+func (m model) View() string {
+	return fmt.Sprintf(
+		"%s%s%s",
+		m.viewport.View(),
+		gap,
+		m.textarea.View(),
+	)
+}
 
 // ReadFromPort should be called as go routine.
 // The function is intended to run continuously
@@ -131,9 +269,11 @@ func main() {
 
 	fmt.Println("Start send and receive go rountine.")
 	go ReadFromPort(port, showTimestamp, showColoredOutput)
-	go WriteToPort(port, showTimestamp, showColoredOutput)
+	// go WriteToPort(port, showTimestamp, showColoredOutput)
 
-	for {
-		time.Sleep(2 * time.Second)
+	p := tea.NewProgram(initialModel(port, showTimestamp))
+
+	if _, err := p.Run(); err != nil {
+		log.Fatal(err)
 	}
 }
