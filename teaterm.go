@@ -125,23 +125,32 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		// Account for the border on the viewport and textarea
-		m.viewport.Width = msg.Width - 2
-		m.textarea.SetWidth(msg.Width - 2)
-		m.viewport.Height = msg.Height - m.textarea.Height() - lipgloss.Height(gap) - 2
+		m.viewport.Width = msg.Width
+		m.textarea.SetWidth(msg.Width)
+		m.viewport.Height = msg.Height - m.textarea.Height() - lipgloss.Height(gap)
 
 		if len(m.messages) > 0 {
 			// Wrap content before setting it.
 			m.viewport.SetContent(lipgloss.NewStyle().Width(m.viewport.Width).Render(strings.Join(m.messages, "\n")))
 		}
 		m.viewport.GotoBottom()
+
+	case tea.MouseMsg:
+		switch msg.Button {
+		case tea.MouseButtonWheelUp:
+			m.viewport.ScrollUp(1)
+		case tea.MouseButtonWheelDown:
+			m.viewport.ScrollDown(1)
+		}
+
 	case tea.KeyMsg:
 		switch msg.Type {
 		case tea.KeyCtrlC, tea.KeyEsc:
 			return m, tea.Quit
 		case tea.KeyCtrlUp:
-			m.viewport.LineUp(1)
+			m.viewport.ScrollUp(3)
 		case tea.KeyCtrlDown:
-			m.viewport.LineDown(1)
+			m.viewport.ScrollDown(3)
 		case tea.KeyUp:
 			if m.historyIndex > 0 {
 				m.historyIndex--
@@ -284,7 +293,7 @@ func main() {
 
 	defer port.Close()
 
-	p := tea.NewProgram(initialModel(port, showTimestamp))
+	p := tea.NewProgram(initialModel(port, showTimestamp), tea.WithMouseCellMotion())
 
 	go readFromPort(p, port)
 
