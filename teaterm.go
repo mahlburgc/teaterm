@@ -47,7 +47,7 @@ var (
 				Border(lipgloss.HiddenBorder())
 )
 
-const gap = "\n\n"
+const gap = "\n"
 
 type model struct {
 	viewport      viewport.Model
@@ -84,6 +84,7 @@ func initialModel(port serial.Port, showTimestamp bool) model {
 	vp := viewport.New(30, 5)
 	vp.SetContent(`Welcome to the serial monitor!
 Waiting for data...`)
+	vp.Style = focusedBorderStyle
 
 	ta.KeyMap.InsertNewline.SetEnabled(false)
 
@@ -147,7 +148,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				t := time.Now().Format("15:04:05.000")
 				line.WriteString(fmt.Sprintf("[%s] ", t))
 			}
-			line.WriteString("--> ")
+			line.WriteString("> ")
 			line.WriteString(userInput)
 
 			m.messages = append(m.messages, line.String())
@@ -163,7 +164,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			t := time.Now().Format("15:04:05.000")
 			line.WriteString(fmt.Sprintf("[%s] ", t))
 		}
-		line.WriteString("<-- ")
+		line.WriteString("< ")
 		line.WriteString(string(msg))
 
 		m.messages = append(m.messages, line.String())
