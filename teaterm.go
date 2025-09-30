@@ -28,6 +28,7 @@ func ReadFromPort(port serial.Port, showTimestamp bool, showColoredOutput bool) 
 			t := time.Now().Format("15:04:05.000")
 			fmt.Fprintf(&msg, "[%s] ", t)
 		}
+		// msg.WriteString("<-- ")
 		msg.WriteString(line)
 		if showColoredOutput {
 			color.RGB(0, 128, 255).Println(msg.String())
@@ -64,6 +65,7 @@ func WriteToPort(port serial.Port, showTimestamp bool, showColoredOutput bool) {
 				t := time.Now().Format("15:04:05.000")
 				fmt.Fprintf(&msg, "[%s] ", t)
 			}
+			// msg.WriteString("--> ")
 			msg.WriteString(userInput)
 			if showColoredOutput {
 				color.RGB(128, 0, 255).Println(msg.String())
