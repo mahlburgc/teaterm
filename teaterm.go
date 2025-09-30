@@ -50,13 +50,15 @@ var (
 const gap = "\n"
 
 type model struct {
-	viewport      viewport.Model
-	messages      []string
-	textarea      textarea.Model
-	senderStyle   lipgloss.Style
-	err           error
-	port          serial.Port
-	showTimestamp bool
+	viewport       viewport.Model
+	messages       []string
+	textarea       textarea.Model
+	senderStyle    lipgloss.Style
+	err            error
+	port           serial.Port
+	showTimestamp  bool
+	commandHistory []string // To store sent commands
+	historyIndex   int      // Current position in command history
 }
 
 func initialModel(port serial.Port, showTimestamp bool) model {
@@ -76,7 +78,6 @@ func initialModel(port serial.Port, showTimestamp bool) model {
 	ta.SetHeight(1)
 	ta.FocusedStyle.CursorLine = lipgloss.NewStyle() // Remove cursor line styling
 	ta.ShowLineNumbers = false
-	//ta.Blur()
 
 	ta.SetWidth(30)
 	ta.SetHeight(1)
@@ -89,13 +90,15 @@ Waiting for data...`)
 	ta.KeyMap.InsertNewline.SetEnabled(false)
 
 	return model{
-		textarea:      ta,
-		messages:      []string{},
-		viewport:      vp,
-		senderStyle:   lipgloss.NewStyle().Foreground(lipgloss.Color("5")),
-		err:           nil,
-		port:          port,
-		showTimestamp: showTimestamp,
+		textarea:       ta,
+		messages:       []string{},
+		viewport:       vp,
+		senderStyle:    focusedPlaceholderStyle,
+		err:            nil,
+		port:           port,
+		showTimestamp:  showTimestamp,
+		commandHistory: []string{},
+		historyIndex:   0,
 	}
 }
 
@@ -114,9 +117,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.viewport.Width = msg.Width
-		m.textarea.SetWidth(msg.Width)
-		m.viewport.Height = msg.Height - m.textarea.Height() - lipgloss.Height(gap)
+		// Account for the border on the viewport and textarea
+		m.viewport.Width = msg.Width - 2
+		m.textarea.SetWidth(msg.Width - 2)
+		m.viewport.Height = msg.Height - m.textarea.Height() - lipgloss.Height(gap) - 2
 
 		if len(m.messages) > 0 {
 			// Wrap content before setting it.
@@ -126,13 +130,33 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.Type {
 		case tea.KeyCtrlC, tea.KeyEsc:
-			fmt.Println(m.textarea.Value())
 			return m, tea.Quit
+		case tea.KeyUp:
+			if m.historyIndex > 0 {
+				m.historyIndex--
+				m.textarea.SetValue(m.commandHistory[m.historyIndex])
+				m.textarea.SetCursor(len(m.textarea.Value()))
+			}
+		case tea.KeyDown:
+			if m.historyIndex < len(m.commandHistory) {
+				m.historyIndex++
+				if m.historyIndex < len(m.commandHistory) {
+					m.textarea.SetValue(m.commandHistory[m.historyIndex])
+					m.textarea.SetCursor(len(m.textarea.Value()))
+				} else {
+					// Cleared history, reset to empty
+					m.textarea.Reset()
+				}
+			}
 		case tea.KeyEnter:
 			userInput := m.textarea.Value()
 			if userInput == "" {
 				return m, nil
 			}
+
+			// Add to history
+			m.commandHistory = append(m.commandHistory, userInput)
+			m.historyIndex = len(m.commandHistory)
 
 			// Send to serial port
 			stringToSend := userInput + "\r\n"
@@ -151,8 +175,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			line.WriteString("> ")
 			line.WriteString(userInput)
 
-			m.messages = append(m.messages, line.String())
-
+			m.messages = append(m.messages, m.senderStyle.Render(line.String()))
 			m.viewport.SetContent(strings.Join(m.messages, "\n"))
 			m.viewport.GotoBottom()
 			m.textarea.Reset()
