@@ -87,6 +87,11 @@ func initialModel(port serial.Port, showTimestamp bool) model {
 Waiting for data...`)
 	vp.Style = focusedBorderStyle
 
+	// Disable the viewport's default up/down key handling so it doesn't scroll
+	// when we are navigating command history.
+	vp.KeyMap.Up.SetEnabled(false)
+	vp.KeyMap.Down.SetEnabled(false)
+
 	ta.KeyMap.InsertNewline.SetEnabled(false)
 
 	return model{
@@ -112,6 +117,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		vpCmd tea.Cmd
 	)
 
+	// Note: The viewport's update is still called, but it will ignore
+	// the up/down keys because we disabled them in its KeyMap.
 	m.textarea, tiCmd = m.textarea.Update(msg)
 	m.viewport, vpCmd = m.viewport.Update(msg)
 
@@ -131,6 +138,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.Type {
 		case tea.KeyCtrlC, tea.KeyEsc:
 			return m, tea.Quit
+		case tea.KeyCtrlUp:
+			m.viewport.LineUp(1)
+		case tea.KeyCtrlDown:
+			m.viewport.LineDown(1)
 		case tea.KeyUp:
 			if m.historyIndex > 0 {
 				m.historyIndex--
