@@ -7,8 +7,10 @@ import (
 	"io"
 	"log"
 	"os"
+	"strings"
 	"time"
 
+	"github.com/fatih/color"
 	"go.bug.st/serial"
 	"go.bug.st/serial/enumerator"
 )
@@ -16,12 +18,22 @@ import (
 // ReadFromPort should be called as go routine.
 // The function is intended to run continuously
 // and read the input stream from a serial port.
-func ReadFromPort(port serial.Port) {
+func ReadFromPort(port serial.Port, showTimestamp bool, showColoredOutput bool) {
 	scanner := bufio.NewScanner(port)
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		fmt.Printf("RX: %s\n", line)
+		var msg strings.Builder
+		if showTimestamp {
+			t := time.Now().Format("15:04:05.000")
+			fmt.Fprintf(&msg, "[%s] ", t)
+		}
+		msg.WriteString(line)
+		if showColoredOutput {
+			color.RGB(0, 128, 255).Println(msg.String())
+		} else {
+			fmt.Println(msg.String())
+		}
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -35,7 +47,7 @@ func ReadFromPort(port serial.Port) {
 // WriteToPort should be called as go routine.
 // The function is intended to run continuously, read from
 // user input stream and write the user input to the serial port.
-func WriteToPort(port serial.Port) {
+func WriteToPort(port serial.Port, showTimestamp bool, showColoredOutput bool) {
 	scanner := bufio.NewScanner(os.Stdin)
 
 	for scanner.Scan() {
@@ -47,7 +59,17 @@ func WriteToPort(port serial.Port) {
 			log.Printf("Error writing to serial port: %v", err)
 			return // TODO what to do on error, e.g. if the serial port is closed
 		} else {
-			fmt.Printf("TX: %s\n", userInput)
+			var msg strings.Builder
+			if showTimestamp {
+				t := time.Now().Format("15:04:05.000")
+				fmt.Fprintf(&msg, "[%s] ", t)
+			}
+			msg.WriteString(userInput)
+			if showColoredOutput {
+				color.RGB(128, 0, 255).Println(msg.String())
+			} else {
+				fmt.Println(msg.String())
+			}
 		}
 	}
 
@@ -63,10 +85,15 @@ func main() {
 
 	listPtr := flag.Bool("l", false, "list available ports")
 	portPtr := flag.String("p", "/dev/ttyUSB0", "serial port")
+	timestampPtr := flag.Bool("t", false, "show timestamp")
+	coloredOutputPtr := flag.Bool("c", false, "show colored output")
 
 	flag.Parse()
 
 	listFlag := *listPtr
+	showTimestamp := *timestampPtr
+	showColoredOutput := *coloredOutputPtr
+
 	// fmt.Println("list:", listFlag)
 	// fmt.Println("port:", *portPtr)
 
@@ -101,8 +128,8 @@ func main() {
 	defer port.Close()
 
 	fmt.Println("Start send and receive go rountine.")
-	go ReadFromPort(port)
-	go WriteToPort(port)
+	go ReadFromPort(port, showTimestamp, showColoredOutput)
+	go WriteToPort(port, showTimestamp, showColoredOutput)
 
 	for {
 		time.Sleep(2 * time.Second)
