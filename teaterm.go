@@ -2,11 +2,11 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"flag"
 	"fmt"
 	"io"
 	"log"
-	"os"
 	"strings"
 	"time"
 
@@ -15,10 +15,13 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/fatih/color"
 	"go.bug.st/serial"
 	"go.bug.st/serial/enumerator"
 )
+
+// Define the messages we'll use for communication
+type serialMsg string
+type errMsg struct{ err error }
 
 var (
 	cursorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("212"))
@@ -45,10 +48,6 @@ var (
 )
 
 const gap = "\n\n"
-
-type (
-	errMsg error
-)
 
 type model struct {
 	viewport      viewport.Model
@@ -129,15 +128,52 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			fmt.Println(m.textarea.Value())
 			return m, tea.Quit
 		case tea.KeyEnter:
-			m.messages = append(m.messages, m.senderStyle.Render("You: ")+m.textarea.Value())
-			m.viewport.SetContent(lipgloss.NewStyle().Width(m.viewport.Width).Render(strings.Join(m.messages, "\n")))
-			m.textarea.Reset()
+			userInput := m.textarea.Value()
+			if userInput == "" {
+				return m, nil
+			}
+
+			// Send to serial port
+			stringToSend := userInput + "\r\n"
+			_, err := m.port.Write([]byte(stringToSend))
+			if err != nil {
+				m.err = fmt.Errorf("error writing to serial port: %w", err)
+				return m, nil
+			}
+
+			// Log the sent message to the viewport
+			var line strings.Builder
+			if m.showTimestamp {
+				t := time.Now().Format("15:04:05.000")
+				line.WriteString(fmt.Sprintf("[%s] ", t))
+			}
+			line.WriteString("--> ")
+			line.WriteString(userInput)
+
+			m.messages = append(m.messages, line.String())
+
+			m.viewport.SetContent(strings.Join(m.messages, "\n"))
 			m.viewport.GotoBottom()
+			m.textarea.Reset()
 		}
+
+	case serialMsg:
+		var line strings.Builder
+		if m.showTimestamp {
+			t := time.Now().Format("15:04:05.000")
+			line.WriteString(fmt.Sprintf("[%s] ", t))
+		}
+		line.WriteString("<-- ")
+		line.WriteString(string(msg))
+
+		m.messages = append(m.messages, line.String())
+
+		m.viewport.SetContent(strings.Join(m.messages, "\n"))
+		m.viewport.GotoBottom()
 
 	// We handle errors just like any other message
 	case errMsg:
-		m.err = msg
+		m.err = msg.err
 		return m, nil
 	}
 
@@ -153,69 +189,17 @@ func (m model) View() string {
 	)
 }
 
-// ReadFromPort should be called as go routine.
-// The function is intended to run continuously
-// and read the input stream from a serial port.
-func ReadFromPort(port serial.Port, showTimestamp bool, showColoredOutput bool) {
+// readFromPort continuously reads from the serial port and sends messages to the bubbletea program.
+func readFromPort(p *tea.Program, port serial.Port) {
 	scanner := bufio.NewScanner(port)
-
 	for scanner.Scan() {
 		line := scanner.Text()
-		var msg strings.Builder
-		if showTimestamp {
-			t := time.Now().Format("15:04:05.000")
-			fmt.Fprintf(&msg, "[%s] ", t)
-		}
-		// msg.WriteString("<-- ")
-		msg.WriteString(line)
-		if showColoredOutput {
-			color.RGB(0, 128, 255).Println(msg.String())
-		} else {
-			fmt.Println(msg.String())
-		}
+		p.Send(serialMsg(line))
 	}
-
 	if err := scanner.Err(); err != nil {
-		// io.EOF is a "normal" error when the port is closed.
-		if err != io.EOF {
-			log.Printf("Error reading from serial port: %v", err)
+		if err != io.EOF && err != context.Canceled {
+			p.Send(errMsg{err})
 		}
-	}
-}
-
-// WriteToPort should be called as go routine.
-// The function is intended to run continuously, read from
-// user input stream and write the user input to the serial port.
-func WriteToPort(port serial.Port, showTimestamp bool, showColoredOutput bool) {
-	scanner := bufio.NewScanner(os.Stdin)
-
-	for scanner.Scan() {
-		userInput := scanner.Text()
-		stringToSend := userInput + "\r\n" // append line ending, TODO make configurable
-
-		_, err := port.Write([]byte(stringToSend))
-		if err != nil {
-			log.Printf("Error writing to serial port: %v", err)
-			return // TODO what to do on error, e.g. if the serial port is closed
-		} else {
-			var msg strings.Builder
-			if showTimestamp {
-				t := time.Now().Format("15:04:05.000")
-				fmt.Fprintf(&msg, "[%s] ", t)
-			}
-			// msg.WriteString("--> ")
-			msg.WriteString(userInput)
-			if showColoredOutput {
-				color.RGB(128, 0, 255).Println(msg.String())
-			} else {
-				fmt.Println(msg.String())
-			}
-		}
-	}
-
-	// This part is reached if scanner.Scan() returns false, usually on an error or EOF.
-	if err := scanner.Err(); err != nil {
-		log.Printf("Error reading from user input: %v", err)
 	}
 }
 
@@ -226,13 +210,11 @@ func main() {
 	listPtr := flag.Bool("l", false, "list available ports")
 	portPtr := flag.String("p", "/dev/ttyUSB0", "serial port")
 	timestampPtr := flag.Bool("t", false, "show timestamp")
-	coloredOutputPtr := flag.Bool("c", false, "show colored output")
 
 	flag.Parse()
 
 	listFlag := *listPtr
 	showTimestamp := *timestampPtr
-	showColoredOutput := *coloredOutputPtr
 
 	// fmt.Println("list:", listFlag)
 	// fmt.Println("port:", *portPtr)
@@ -267,11 +249,9 @@ func main() {
 
 	defer port.Close()
 
-	fmt.Println("Start send and receive go rountine.")
-	go ReadFromPort(port, showTimestamp, showColoredOutput)
-	// go WriteToPort(port, showTimestamp, showColoredOutput)
-
 	p := tea.NewProgram(initialModel(port, showTimestamp))
+
+	go readFromPort(p, port)
 
 	if _, err := p.Run(); err != nil {
 		log.Fatal(err)
