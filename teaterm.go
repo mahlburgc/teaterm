@@ -59,6 +59,7 @@ type model struct {
 	showTimestamp  bool
 	commandHistory []string // To store sent commands
 	historyIndex   int      // Current position in command history
+	mouseEnabled   bool     // To toggle mouse support for copying
 }
 
 func initialModel(port serial.Port, showTimestamp bool) model {
@@ -104,10 +105,12 @@ Waiting for data...`)
 		showTimestamp:  showTimestamp,
 		commandHistory: []string{},
 		historyIndex:   0,
+		mouseEnabled:   true,
 	}
 }
 
 func (m model) Init() tea.Cmd {
+	// We need to explicitly enable mouse support to capture scroll events.
 	return textarea.Blink
 }
 
@@ -124,10 +127,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		// Account for the border on the viewport and textarea
-		m.viewport.Width = msg.Width
-		m.textarea.SetWidth(msg.Width)
-		m.viewport.Height = msg.Height - m.textarea.Height() - lipgloss.Height(gap)
+		// Account for the border on the viewport and textarea.
+		// -2 for horizontal and -3 for vertical to account for borders and gaps.
+		m.viewport.Width = msg.Width - 1
+		m.textarea.SetWidth(msg.Width - 1)
+		m.viewport.Height = msg.Height - m.textarea.Height() - lipgloss.Height(gap) - 1
 
 		if len(m.messages) > 0 {
 			// Wrap content before setting it.
@@ -136,14 +140,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport.GotoBottom()
 
 	case tea.MouseMsg:
-		switch msg.Button {
-		case tea.MouseButtonWheelUp:
-			m.viewport.ScrollUp(1)
-		case tea.MouseButtonWheelDown:
-			m.viewport.ScrollDown(1)
+		if m.mouseEnabled {
+			switch msg.Button {
+			case tea.MouseButtonWheelUp:
+				m.viewport.ScrollUp(1)
+			case tea.MouseButtonWheelDown:
+				m.viewport.ScrollDown(1)
+			}
 		}
 
 	case tea.KeyMsg:
+		switch msg.String() {
+		case "alt+m": // Toggle mouse support on/off
+			m.mouseEnabled = !m.mouseEnabled
+			if m.mouseEnabled {
+				return m, tea.EnableMouseCellMotion
+			}
+			return m, tea.DisableMouse
+		}
+
 		switch msg.Type {
 		case tea.KeyCtrlC, tea.KeyEsc:
 			return m, tea.Quit
@@ -225,11 +240,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
+	var footerText string
+	if m.mouseEnabled {
+		footerText = "Scrolling: ON | Press Alt+M to disable mouse scrollin and select text."
+	} else {
+		footerText = "Scrolling: OFF | Press Alt+M to re-enable mouse scrolling."
+	}
+	footerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	return fmt.Sprintf(
-		"%s%s%s",
+		"%s%s%s\n%s",
 		m.viewport.View(),
 		gap,
 		m.textarea.View(),
+		footerStyle.Render(footerText),
 	)
 }
 
@@ -293,7 +316,7 @@ func main() {
 
 	defer port.Close()
 
-	p := tea.NewProgram(initialModel(port, showTimestamp), tea.WithMouseCellMotion())
+	p := tea.NewProgram(initialModel(port, showTimestamp), tea.WithAltScreen(), tea.WithMouseCellMotion())
 
 	go readFromPort(p, port)
 
