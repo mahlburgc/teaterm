@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"os"
 	"strings"
 	"time"
 
@@ -50,19 +51,20 @@ var (
 const gap = "\n"
 
 type model struct {
-	viewport       viewport.Model
-	messages       []string
-	textarea       textarea.Model
-	senderStyle    lipgloss.Style
-	err            error
-	port           serial.Port
-	showTimestamp  bool
-	commandHistory []string // To store sent commands
-	historyIndex   int      // Current position in command history
-	mouseEnabled   bool     // To toggle mouse support for copying
+	viewport           viewport.Model
+	messages           []string
+	textarea           textarea.Model
+	senderStyle        lipgloss.Style
+	err                error
+	port               serial.Port
+	showTimestamp      bool
+	commandHistory     []string // To store sent commands
+	historyIndex       int      // Current position in command history
+	mouseEnabled       bool     // To toggle mouse support for copying
+	commandHistoryFile string
 }
 
-func initialModel(port serial.Port, showTimestamp bool) model {
+func initialModel(port serial.Port, showTimestamp bool, cmdHistory []string, cmdHistoryFile string) model {
 	ta := textarea.New()
 	ta.Placeholder = "Send a message..."
 	ta.Focus()
@@ -96,16 +98,17 @@ Waiting for data...`)
 	ta.KeyMap.InsertNewline.SetEnabled(false)
 
 	return model{
-		textarea:       ta,
-		messages:       []string{},
-		viewport:       vp,
-		senderStyle:    focusedPlaceholderStyle,
-		err:            nil,
-		port:           port,
-		showTimestamp:  showTimestamp,
-		commandHistory: []string{},
-		historyIndex:   0,
-		mouseEnabled:   true,
+		textarea:           ta,
+		messages:           []string{},
+		viewport:           vp,
+		senderStyle:        focusedPlaceholderStyle,
+		err:                nil,
+		port:               port,
+		showTimestamp:      showTimestamp,
+		commandHistory:     cmdHistory,
+		historyIndex:       len(cmdHistory),
+		mouseEnabled:       true,
+		commandHistoryFile: cmdHistoryFile,
 	}
 }
 
@@ -161,6 +164,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch msg.Type {
 		case tea.KeyCtrlC, tea.KeyEsc:
+			// save current command history for next session
+			const maxLines = 50
+			// Check if the slice has more elements than the limit.
+			if len(m.commandHistory) > maxLines {
+				// If it does, re-assign 'lines' to a new sub-slice
+				// containing only the last 100 elements.
+				start := len(m.commandHistory) - maxLines
+				m.commandHistory = m.commandHistory[start:]
+			}
+
+			content := strings.Join(m.commandHistory, "\n") + "\n"
+
+			err := os.WriteFile(m.commandHistoryFile, []byte(content), 0644)
+			if err != nil {
+				log.Fatal(err)
+			}
 			return m, tea.Quit
 		case tea.KeyCtrlUp:
 			m.viewport.ScrollUp(3)
@@ -283,8 +302,31 @@ func main() {
 	listFlag := *listPtr
 	showTimestamp := *timestampPtr
 
-	// fmt.Println("list:", listFlag)
-	// fmt.Println("port:", *portPtr)
+	homedir, err := os.UserHomeDir()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	commandHistoryFilePath := homedir + "/.config/teaterm/"
+	commandHistoryFileName := "cmdhistroy.conf"
+	commandHistoryFile := commandHistoryFilePath + commandHistoryFileName
+
+	err = os.MkdirAll(commandHistoryFilePath, os.ModePerm)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	cmdhist, err := os.ReadFile(commandHistoryFile)
+	if err != nil {
+		log.Fatal(err)
+	}
+	cmdHistory := string(cmdhist)
+
+	// 1. Trim leading/trailing whitespace (including newlines)
+	trimmedContent := strings.TrimSpace(cmdHistory)
+
+	// Split the string by the newline character
+	cmdHistoryLines := strings.Split(trimmedContent, "\n")
 
 	ports, err := enumerator.GetDetailedPortsList()
 	if err != nil {
@@ -316,11 +358,14 @@ func main() {
 
 	defer port.Close()
 
-	p := tea.NewProgram(initialModel(port, showTimestamp), tea.WithAltScreen(), tea.WithMouseCellMotion())
+	//defer cmdHistoryFile.Close()
+
+	p := tea.NewProgram(initialModel(port, showTimestamp, cmdHistoryLines, commandHistoryFile), tea.WithAltScreen(), tea.WithMouseCellMotion())
 
 	go readFromPort(p, port)
 
 	if _, err := p.Run(); err != nil {
 		log.Fatal(err)
 	}
+	fmt.Printf("Command history saved under %s!\n", commandHistoryFile)
 }
