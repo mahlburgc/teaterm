@@ -86,7 +86,7 @@ func initialModel(port serial.Port, showTimestamp bool, cmdHistory []string, cmd
 	ta.SetHeight(1)
 
 	vp := viewport.New(30, 5)
-	vp.SetContent(`Welcome to the serial monitor!
+	vp.SetContent(`Welcome to the teaterm!
 Waiting for data...`)
 	vp.Style = focusedBorderStyle
 
