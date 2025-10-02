@@ -52,17 +52,18 @@ const gap = "\n"
 
 type model struct {
 	viewport           viewport.Model
-	sideViewport       viewport.Model // New side window
+	sideViewport       viewport.Model
 	messages           []string
 	textarea           textarea.Model
 	senderStyle        lipgloss.Style
 	err                error
 	port               serial.Port
 	showTimestamp      bool
-	commandHistory     []string // To store sent commands
-	historyIndex       int      // Current position in command history
-	mouseEnabled       bool     // To toggle mouse support for copying
+	commandHistory     []string
+	historyIndex       int
+	mouseEnabled       bool
 	commandHistoryFile string
+	selectedCmdIndex   int // Add this line
 }
 
 func initialModel(port serial.Port, showTimestamp bool, cmdHistory []string, cmdHistoryFile string) model {
@@ -115,6 +116,7 @@ Waiting for data...`)
 		historyIndex:       len(cmdHistory),
 		mouseEnabled:       true,
 		commandHistoryFile: cmdHistoryFile,
+		selectedCmdIndex:   -1,
 	}
 }
 
@@ -156,7 +158,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for i, v := range m.commandHistory {
 			reversed[len(m.commandHistory)-1-i] = v
 		}
-		historyContent := "Command History:\n" + strings.Join(reversed, "\n")
+		var historyLines []string
+		for i, cmd := range reversed {
+			if i == m.selectedCmdIndex {
+				historyLines = append(historyLines, lipgloss.NewStyle().Background(lipgloss.Color("57")).Foreground(lipgloss.Color("230")).Render(cmd))
+			} else {
+				historyLines = append(historyLines, cmd)
+			}
+		}
+		historyContent := "Command History:\n" + strings.Join(historyLines, "\n")
 		m.sideViewport.SetContent(lipgloss.NewStyle().Width(m.sideViewport.Width).Render(historyContent))
 
 	case tea.MouseMsg:
@@ -166,6 +176,63 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.viewport.ScrollUp(1)
 			case tea.MouseButtonWheelDown:
 				m.viewport.ScrollDown(1)
+			case tea.MouseButtonLeft:
+				x, y := msg.X, msg.Y
+				sideX := m.viewport.Width // starting x of sideViewport
+				if x >= sideX && x < sideX+m.sideViewport.Width {
+					borderOffset := 1 // lipgloss.RoundedBorder is 1 line thick
+					headerOffset := 1 // "Command History:" header
+					scrollOffset := m.sideViewport.YOffset
+
+					line := y - borderOffset - headerOffset + scrollOffset
+
+					reversed := make([]string, len(m.commandHistory))
+					for i, v := range m.commandHistory {
+						reversed[len(m.commandHistory)-1-i] = v
+					}
+
+					if line >= 0 && line < len(reversed) {
+						m.selectedCmdIndex = line
+						selectedCmd := reversed[line]
+
+						// Send to serial port immediately
+						stringToSend := selectedCmd + "\r\n"
+						_, err := m.port.Write([]byte(stringToSend))
+						if err != nil {
+							m.err = fmt.Errorf("error writing to serial port: %w", err)
+							return m, nil
+						}
+
+						// Log the sent message to the viewport
+						var lineBuilder strings.Builder
+						if m.showTimestamp {
+							t := time.Now().Format("15:04:05.000")
+							lineBuilder.WriteString(fmt.Sprintf("[%s] ", t))
+						}
+						lineBuilder.WriteString("> ")
+						lineBuilder.WriteString(selectedCmd)
+
+						m.messages = append(m.messages, m.senderStyle.Render(lineBuilder.String()))
+						m.viewport.SetContent(strings.Join(m.messages, "\n"))
+						m.viewport.GotoBottom()
+
+						// Clear textarea so Enter does not resend
+						m.textarea.SetValue("")
+						m.textarea.SetCursor(0)
+
+						// Refresh side window highlight
+						var historyLines []string
+						for i, cmd := range reversed {
+							if i == m.selectedCmdIndex {
+								historyLines = append(historyLines, lipgloss.NewStyle().Background(lipgloss.Color("57")).Foreground(lipgloss.Color("230")).Render(cmd))
+							} else {
+								historyLines = append(historyLines, cmd)
+							}
+						}
+						historyContent := "Command History:\n" + strings.Join(historyLines, "\n")
+						m.sideViewport.SetContent(lipgloss.NewStyle().Width(m.sideViewport.Width).Render(historyContent))
+					}
+				}
 			}
 		}
 
@@ -259,7 +326,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			for i, v := range m.commandHistory {
 				reversed[len(m.commandHistory)-1-i] = v
 			}
-			historyContent := "Command History:\n" + strings.Join(reversed, "\n")
+			var historyLines []string
+			for i, cmd := range reversed {
+				if i == m.selectedCmdIndex {
+					historyLines = append(historyLines, lipgloss.NewStyle().Background(lipgloss.Color("57")).Foreground(lipgloss.Color("230")).Render(cmd))
+				} else {
+					historyLines = append(historyLines, cmd)
+				}
+			}
+			historyContent := "Command History:\n" + strings.Join(historyLines, "\n")
 			m.sideViewport.SetContent(lipgloss.NewStyle().Width(m.sideViewport.Width).Render(historyContent))
 
 		}
