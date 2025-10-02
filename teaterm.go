@@ -208,10 +208,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 
-			// Add to history
-			m.commandHistory = append(m.commandHistory, userInput)
-			m.historyIndex = len(m.commandHistory)
+			// Add to history if not same as last stored
+			if userInput != m.commandHistory[len(m.commandHistory)-1] {
+				m.commandHistory = append(m.commandHistory, userInput)
+			}
 
+			m.historyIndex = len(m.commandHistory)
 			// Send to serial port
 			stringToSend := userInput + "\r\n"
 			_, err := m.port.Write([]byte(stringToSend))
