@@ -52,7 +52,7 @@ const gap = "\n"
 
 type model struct {
 	viewport           viewport.Model
-	secondViewport     viewport.Model
+	sideViewport       viewport.Model // New side window
 	messages           []string
 	textarea           textarea.Model
 	senderStyle        lipgloss.Style
@@ -91,9 +91,9 @@ func initialModel(port serial.Port, showTimestamp bool, cmdHistory []string, cmd
 Waiting for data...`)
 	vp.Style = focusedBorderStyle
 
-	secondVp := viewport.New(30, 5)
-	secondVp.SetContent("This is the second window.")
-	secondVp.Style = focusedBorderStyle
+	sideVp := viewport.New(30, 5)
+	sideVp.SetContent("Side Window\nNothing important here yet.")
+	sideVp.Style = focusedBorderStyle
 
 	// Disable the viewport's default up/down key handling so it doesn't scroll
 	// when we are navigating command history.
@@ -106,7 +106,7 @@ Waiting for data...`)
 		textarea:           ta,
 		messages:           []string{},
 		viewport:           vp,
-		secondViewport:     secondVp,
+		sideViewport:       sideVp, // Initialize side window
 		senderStyle:        focusedPlaceholderStyle,
 		err:                nil,
 		port:               port,
@@ -125,32 +125,39 @@ func (m model) Init() tea.Cmd {
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var (
-		tiCmd       tea.Cmd
-		vpCmd       tea.Cmd
-		secondVpCmd tea.Cmd
+		tiCmd tea.Cmd
+		vpCmd tea.Cmd
 	)
 
 	// Note: The viewport's update is still called, but it will ignore
 	// the up/down keys because we disabled them in its KeyMap.
 	m.textarea, tiCmd = m.textarea.Update(msg)
 	m.viewport, vpCmd = m.viewport.Update(msg)
-	m.secondViewport, secondVpCmd = m.secondViewport.Update(msg)
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		// Account for the border on the viewport and textarea.
-		// -2 for horizontal and -3 for vertical to account for borders and gaps.
-		m.viewport.Width = msg.Width/3*2 - 1
-		m.secondViewport.Width = msg.Width/3 - 1
-		m.textarea.SetWidth(msg.Width - 2)
+		// Divide the available width between the two viewports
+		mainWidth := (msg.Width - 2) / 3 * 2
+		sideWidth := msg.Width - mainWidth - 2
+
+		m.viewport.Width = mainWidth
+		m.sideViewport.Width = sideWidth
+
+		m.textarea.SetWidth(msg.Width - 1)
 		m.viewport.Height = msg.Height - m.textarea.Height() - lipgloss.Height(gap) - 1
-		m.secondViewport.Height = msg.Height - m.textarea.Height() - lipgloss.Height(gap) - 1
+		m.sideViewport.Height = m.viewport.Height
 
 		if len(m.messages) > 0 {
-			// Wrap content before setting it.
 			m.viewport.SetContent(lipgloss.NewStyle().Width(m.viewport.Width).Render(strings.Join(m.messages, "\n")))
 		}
 		m.viewport.GotoBottom()
+
+		reversed := make([]string, len(m.commandHistory))
+		for i, v := range m.commandHistory {
+			reversed[len(m.commandHistory)-1-i] = v
+		}
+		historyContent := "Command History:\n" + strings.Join(reversed, "\n")
+		m.sideViewport.SetContent(lipgloss.NewStyle().Width(m.sideViewport.Width).Render(historyContent))
 
 	case tea.MouseMsg:
 		if m.mouseEnabled {
@@ -245,6 +252,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport.SetContent(strings.Join(m.messages, "\n"))
 			m.viewport.GotoBottom()
 			m.textarea.Reset()
+
+			// Update side window with command history after sending a command
+			// Update side window with command history (latest on top)
+			reversed := make([]string, len(m.commandHistory))
+			for i, v := range m.commandHistory {
+				reversed[len(m.commandHistory)-1-i] = v
+			}
+			historyContent := "Command History:\n" + strings.Join(reversed, "\n")
+			m.sideViewport.SetContent(lipgloss.NewStyle().Width(m.sideViewport.Width).Render(historyContent))
+
 		}
 
 	case serialMsg:
@@ -267,7 +284,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	return m, tea.Batch(tiCmd, vpCmd, secondVpCmd)
+	return m, tea.Batch(tiCmd, vpCmd)
 }
 
 func (m model) View() string {
@@ -278,10 +295,17 @@ func (m model) View() string {
 		footerText = "Scrolling: OFF | Press Alt+M to re-enable mouse scrolling."
 	}
 	footerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	mainView := lipgloss.JoinHorizontal(lipgloss.Top, m.viewport.View(), m.secondViewport.View())
+
+	// Arrange the two viewports side by side
+	row := lipgloss.JoinHorizontal(
+		lipgloss.Top,
+		m.viewport.View(),
+		m.sideViewport.View(),
+	)
+
 	return fmt.Sprintf(
 		"%s%s%s\n%s",
-		mainView,
+		row,
 		gap,
 		m.textarea.View(),
 		footerStyle.Render(footerText),
