@@ -173,6 +173,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.serialVp.ScrollUp(3)
 		case tea.KeyCtrlDown:
 			m.serialVp.ScrollDown(3)
+		case tea.KeyCtrlD:
+			if m.cmdHistIndex != len(m.cmdHist) {
+				// delete cmd from command history
+				m.cmdHist = append(m.cmdHist[:m.cmdHistIndex], m.cmdHist[m.cmdHistIndex+1:]...)
+				m.cmdHistIndex = len(m.cmdHist) // TODO create style for cmd history, remove duplicated code
+				m.histVp.SetContent(lipgloss.NewStyle().Width(m.histVp.Width).Render(strings.Join(m.cmdHist, "\n")))
+			}
+
 		case tea.KeyUp:
 			if m.cmdHistIndex > 0 {
 				m.cmdHistIndex--
@@ -297,7 +305,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) View() string {
 
-	footerText := "↑/↓: scroll command history · ctrl+↑/↓: scroll message history"
+	footerText := "↑/↓: scroll commands · ctrl+↑/↓: scroll messages"
+	if m.cmdHistIndex != len(m.cmdHist) {
+		footerText += " · ctrl+d: delete command"
+	}
+
 	footer := footerStyle.Render(footerText)
 
 	// Arrange viewports side by side
