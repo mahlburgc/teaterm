@@ -1,4 +1,4 @@
-module https://github.com/mahlburgc/teaterm
+module github.com/mahlburgc/teaterm
 
 go 1.24.1
 
