@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -73,7 +74,7 @@ func initialModel(port serial.Port, showTimestamp bool, cmdHist []string, cmdHis
 	ta.SetHeight(1)
 
 	serialVp := viewport.New(30, 5)
-	serialVp.SetContent(`Welcome to the teaterm!\nWaiting for data...`)
+	serialVp.SetContent(`Welcome to the teaterm!`)
 	serialVp.Style = focusedBorderStyle
 
 	histVp := viewport.New(30, 5)
@@ -111,9 +112,13 @@ func (m model) Init() tea.Cmd {
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
-	if m.dump != nil {
+	switch msg := msg.(type) {
+	case cursor.BlinkMsg:
+		//avoid print cursor blink
+	default:
 		spew.Fdump(m.dump, msg)
 	}
+
 	var (
 		tiCmd tea.Cmd
 		vpCmd tea.Cmd
@@ -195,8 +200,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						cmdHistLines = append(cmdHistLines, cmd)
 					}
 				}
+				spew.Fdump(m.dump, "cmd history len:", len(m.cmdHist))
+				spew.Fdump(m.dump, "history hight:", m.histVp.Height)
+				spew.Fdump(m.dump, "command index:", m.cmdHistIndex)
+				spew.Fdump(m.dump, "diff:", len(m.cmdHist)-m.histVp.Height)
+				if len(m.cmdHist) > m.histVp.Height {
+					spew.Fdump(m.dump, "here we are")
+					if m.cmdHistIndex <= len(m.cmdHist)-m.histVp.Height+1 {
+						spew.Fdump(m.dump, "now we are outside")
+						cmdHistLines = cmdHistLines[m.cmdHistIndex : m.cmdHistIndex+m.histVp.Height-2]
+						spew.Fdump(m.dump, cmdHistLines)
+					}
+				}
+
 				cmdHistContent := strings.Join(cmdHistLines, "\n")
 				m.histVp.SetContent(lipgloss.NewStyle().Width(m.histVp.Width).Render(cmdHistContent))
+				m.histVp.GotoBottom()
 			}
 
 		case tea.KeyDown:
@@ -214,8 +233,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							cmdHistLines = append(cmdHistLines, cmd)
 						}
 					}
+
+					spew.Fdump(m.dump, "cmd history len:", len(m.cmdHist))
+					spew.Fdump(m.dump, "history hight:", m.histVp.Height)
+					spew.Fdump(m.dump, "command index:", m.cmdHistIndex)
+					spew.Fdump(m.dump, "diff:", len(m.cmdHist)-m.histVp.Height)
+					if len(m.cmdHist) > m.histVp.Height {
+						spew.Fdump(m.dump, "here we are")
+						if m.cmdHistIndex <= len(m.cmdHist)-m.histVp.Height+1 {
+							spew.Fdump(m.dump, "now we are outside")
+							cmdHistLines = cmdHistLines[m.cmdHistIndex : m.cmdHistIndex+m.histVp.Height-2]
+							spew.Fdump(m.dump, cmdHistLines)
+						}
+					}
+
 					cmdHistContent := strings.Join(cmdHistLines, "\n")
 					m.histVp.SetContent(lipgloss.NewStyle().Width(m.histVp.Width).Render(cmdHistContent))
+					m.histVp.GotoBottom()
+
 				} else {
 					// Cleared history, reset to empty
 					m.inputTa.Reset()
@@ -264,7 +299,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				t := time.Now().Format("00:00:00.000")
 				line.WriteString(fmt.Sprintf("[%s] ", t))
 			}
-			line.WriteString("> ")
+			// line.WriteString("> ")
 			line.WriteString(userInput)
 
 			// TODO set serial message histrory limit, remove oldest if exceed
@@ -287,7 +322,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			t := time.Now().Format("15:04:05.000")
 			line.WriteString(fmt.Sprintf("[%s] ", t))
 		}
-		line.WriteString("< ")
+		//line.WriteString("< ")
 		line.WriteString(string(msg))
 
 		// TODO set serial message histrory limit, remove oldest if exceed
