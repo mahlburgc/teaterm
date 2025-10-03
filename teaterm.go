@@ -27,10 +27,6 @@ type errMsg error
 var (
 	cursorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("212"))
 
-	cursorLineStyle = lipgloss.NewStyle().
-			Background(lipgloss.Color("57")).
-			Foreground(lipgloss.Color("230"))
-
 	focusedPlaceholderStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("99"))
 
@@ -40,6 +36,9 @@ var (
 
 	footerStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("245"))
+
+	//selectedCmdStyle = lipgloss.NewStyle().Background(lipgloss.Color("57")).Foreground(lipgloss.Color("230"))
+	selectedCmdStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("99"))
 )
 
 type model struct {
@@ -68,7 +67,6 @@ func initialModel(port serial.Port, showTimestamp bool, cmdHist []string, cmdHis
 	ta.Cursor.Style = cursorStyle
 	ta.FocusedStyle.Placeholder = focusedPlaceholderStyle
 	ta.FocusedStyle.Base = focusedBorderStyle
-	ta.FocusedStyle.CursorLine = cursorLineStyle     //TODO check which to use here
 	ta.FocusedStyle.CursorLine = lipgloss.NewStyle() // Remove cursor line styling
 	ta.ShowLineNumbers = false
 	ta.SetWidth(30)
@@ -113,9 +111,9 @@ func (m model) Init() tea.Cmd {
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
-	// if m.dump != nil {
-	// 	spew.Fdump(m.dump, msg)
-	// }
+	if m.dump != nil {
+		spew.Fdump(m.dump, msg)
+	}
 	var (
 		tiCmd tea.Cmd
 		vpCmd tea.Cmd
@@ -184,7 +182,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				var cmdHistLines []string //TODO remove duplicated code
 				for i, cmd := range m.cmdHist {
 					if i == m.cmdHistIndex {
-						cmdHistLines = append(cmdHistLines, lipgloss.NewStyle().Background(lipgloss.Color("57")).Foreground(lipgloss.Color("230")).Render(cmd))
+						cmdHistLines = append(cmdHistLines, selectedCmdStyle.Render("> "+cmd))
 					} else {
 						cmdHistLines = append(cmdHistLines, cmd)
 					}
@@ -203,7 +201,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					var cmdHistLines []string //TODO remove duplicated code
 					for i, cmd := range m.cmdHist {
 						if i == m.cmdHistIndex {
-							cmdHistLines = append(cmdHistLines, lipgloss.NewStyle().Background(lipgloss.Color("57")).Foreground(lipgloss.Color("230")).Render(cmd))
+							cmdHistLines = append(cmdHistLines, selectedCmdStyle.Render("> "+cmd))
 						} else {
 							cmdHistLines = append(cmdHistLines, cmd)
 						}
