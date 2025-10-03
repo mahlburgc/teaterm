@@ -20,9 +20,8 @@ import (
 	"go.bug.st/serial/enumerator"
 )
 
-// Define the messages we'll use for communication
 type serialMsg string
-type errMsg struct{ err error }
+type errMsg error
 
 var (
 	cursorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("212"))
@@ -31,12 +30,6 @@ var (
 			Background(lipgloss.Color("57")).
 			Foreground(lipgloss.Color("230"))
 
-	placeholderStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("238"))
-
-	endOfBufferStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("235"))
-
 	focusedPlaceholderStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("99"))
 
@@ -44,29 +37,27 @@ var (
 				Border(lipgloss.RoundedBorder()).
 				BorderForeground(lipgloss.Color("238"))
 
-	blurredBorderStyle = lipgloss.NewStyle().
-				Border(lipgloss.HiddenBorder())
+	footerStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("245"))
 )
 
-const gap = "\n"
-
 type model struct {
-	viewport           viewport.Model
-	sideViewport       viewport.Model
-	messages           []string
-	textarea           textarea.Model
-	senderStyle        lipgloss.Style
-	err                error
-	port               serial.Port
-	showTimestamp      bool
-	commandHistory     []string
-	historyIndex       int
-	mouseEnabled       bool
-	commandHistoryFile string
-	selectedCmdIndex   int // Add this line
+	serialVp       viewport.Model
+	histVp         viewport.Model
+	serMessages    []string
+	inputTa        textarea.Model
+	rxMessageStyle lipgloss.Style
+	err            error
+	port           serial.Port
+	showTimestamp  bool
+	cmdHist        []string
+	cmdHistFile    string
+	cmdHistIndex   int
+	width          int
+	height         int
 }
 
-func initialModel(port serial.Port, showTimestamp bool, cmdHistory []string, cmdHistoryFile string) model {
+func initialModel(port serial.Port, showTimestamp bool, cmdHist []string, cmdHistFile string) model {
 	ta := textarea.New()
 	ta.Placeholder = "Send a message..."
 	ta.Focus()
@@ -74,54 +65,46 @@ func initialModel(port serial.Port, showTimestamp bool, cmdHistory []string, cmd
 	ta.CharLimit = 256
 	ta.Cursor.Style = cursorStyle
 	ta.FocusedStyle.Placeholder = focusedPlaceholderStyle
-	ta.BlurredStyle.Placeholder = placeholderStyle
-	ta.FocusedStyle.CursorLine = cursorLineStyle
 	ta.FocusedStyle.Base = focusedBorderStyle
-	ta.BlurredStyle.Base = blurredBorderStyle
-	ta.FocusedStyle.EndOfBuffer = endOfBufferStyle
-	ta.BlurredStyle.EndOfBuffer = endOfBufferStyle
-	ta.SetHeight(1)
+	ta.FocusedStyle.CursorLine = cursorLineStyle     //TODO check which to use here
 	ta.FocusedStyle.CursorLine = lipgloss.NewStyle() // Remove cursor line styling
 	ta.ShowLineNumbers = false
-
 	ta.SetWidth(30)
 	ta.SetHeight(1)
 
-	vp := viewport.New(30, 5)
-	vp.SetContent(`Welcome to the teaterm!
-Waiting for data...`)
-	vp.Style = focusedBorderStyle
+	serialVp := viewport.New(30, 5)
+	serialVp.SetContent(`Welcome to the teaterm!\nWaiting for data...`)
+	serialVp.Style = focusedBorderStyle
 
-	sideVp := viewport.New(30, 5)
-	sideVp.SetContent("Side Window\nNothing important here yet.")
-	sideVp.Style = focusedBorderStyle
+	histVp := viewport.New(30, 5)
+	histVp.SetContent("Command History")
+	histVp.Style = focusedBorderStyle
 
 	// Disable the viewport's default up/down key handling so it doesn't scroll
 	// when we are navigating command history.
-	vp.KeyMap.Up.SetEnabled(false)
-	vp.KeyMap.Down.SetEnabled(false)
+	serialVp.KeyMap.Up.SetEnabled(false)
+	serialVp.KeyMap.Down.SetEnabled(false)
 
-	ta.KeyMap.InsertNewline.SetEnabled(false)
+	ta.KeyMap.InsertNewline.SetEnabled(false) //TODO check
 
 	return model{
-		textarea:           ta,
-		messages:           []string{},
-		viewport:           vp,
-		sideViewport:       sideVp, // Initialize side window
-		senderStyle:        focusedPlaceholderStyle,
-		err:                nil,
-		port:               port,
-		showTimestamp:      showTimestamp,
-		commandHistory:     cmdHistory,
-		historyIndex:       len(cmdHistory),
-		mouseEnabled:       true,
-		commandHistoryFile: cmdHistoryFile,
-		selectedCmdIndex:   -1,
+		inputTa:        ta,
+		serMessages:    []string{},
+		serialVp:       serialVp,
+		histVp:         histVp,
+		rxMessageStyle: focusedPlaceholderStyle,
+		err:            nil,
+		port:           port,
+		showTimestamp:  showTimestamp,
+		cmdHist:        cmdHist,
+		cmdHistIndex:   len(cmdHist),
+		cmdHistFile:    cmdHistFile,
+		width:          0,
+		height:         0,
 	}
 }
 
 func (m model) Init() tea.Cmd {
-	// We need to explicitly enable mouse support to capture scroll events.
 	return textarea.Blink
 }
 
@@ -131,175 +114,91 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		vpCmd tea.Cmd
 	)
 
-	// Note: The viewport's update is still called, but it will ignore
-	// the up/down keys because we disabled them in its KeyMap.
-	m.textarea, tiCmd = m.textarea.Update(msg)
-	m.viewport, vpCmd = m.viewport.Update(msg)
+	m.inputTa, tiCmd = m.inputTa.Update(msg)
+	m.serialVp, vpCmd = m.serialVp.Update(msg)
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		// Divide the available width between the two viewports
-		mainWidth := (msg.Width - 2) / 3 * 2
-		sideWidth := msg.Width - mainWidth - 2
+		m.width = msg.Width
+		m.height = msg.Height
 
-		m.viewport.Width = mainWidth
-		m.sideViewport.Width = sideWidth
+		screenWidth := msg.Width - 2
+		screenHight := msg.Height - 4
 
-		m.textarea.SetWidth(msg.Width - 1)
-		m.viewport.Height = msg.Height - m.textarea.Height() - lipgloss.Height(gap) - 1
-		m.sideViewport.Height = m.viewport.Height
+		m.serialVp.Width = screenWidth / 4 * 3
+		m.histVp.Width = screenWidth - m.serialVp.Width
+		m.inputTa.SetWidth(screenWidth)
 
-		if len(m.messages) > 0 {
-			m.viewport.SetContent(lipgloss.NewStyle().Width(m.viewport.Width).Render(strings.Join(m.messages, "\n")))
+		m.serialVp.Height = screenHight - m.inputTa.Height()
+		m.histVp.Height = m.serialVp.Height
+
+		if len(m.serMessages) > 0 {
+			m.serialVp.SetContent(lipgloss.NewStyle().Width(m.serialVp.Width).Render(strings.Join(m.serMessages, "\n")))
 		}
-		m.viewport.GotoBottom()
+		m.serialVp.GotoBottom()
 
-		reversed := make([]string, len(m.commandHistory))
-		for i, v := range m.commandHistory {
-			reversed[len(m.commandHistory)-1-i] = v
-		}
-		var historyLines []string
-		for i, cmd := range reversed {
-			if i == m.selectedCmdIndex {
-				historyLines = append(historyLines, lipgloss.NewStyle().Background(lipgloss.Color("57")).Foreground(lipgloss.Color("230")).Render(cmd))
-			} else {
-				historyLines = append(historyLines, cmd)
-			}
-		}
-		historyContent := "Command History:\n" + strings.Join(historyLines, "\n")
-		m.sideViewport.SetContent(lipgloss.NewStyle().Width(m.sideViewport.Width).Render(historyContent))
-
-	case tea.MouseMsg:
-		if m.mouseEnabled {
-			switch msg.Button {
-			case tea.MouseButtonWheelUp:
-				m.viewport.ScrollUp(1)
-			case tea.MouseButtonWheelDown:
-				m.viewport.ScrollDown(1)
-			case tea.MouseButtonLeft:
-				x, y := msg.X, msg.Y
-				sideX := m.viewport.Width // starting x of sideViewport
-				if x >= sideX && x < sideX+m.sideViewport.Width {
-					borderOffset := 1 // lipgloss.RoundedBorder is 1 line thick
-					headerOffset := 1 // "Command History:" header
-					scrollOffset := m.sideViewport.YOffset
-
-					line := y - borderOffset - headerOffset + scrollOffset
-
-					reversed := make([]string, len(m.commandHistory))
-					for i, v := range m.commandHistory {
-						reversed[len(m.commandHistory)-1-i] = v
-					}
-
-					if line >= 0 && line < len(reversed) {
-						m.selectedCmdIndex = line
-						selectedCmd := reversed[line]
-
-						// Send to serial port immediately
-						stringToSend := selectedCmd + "\r\n"
-						_, err := m.port.Write([]byte(stringToSend))
-						if err != nil {
-							m.err = fmt.Errorf("error writing to serial port: %w", err)
-							return m, nil
-						}
-
-						// Log the sent message to the viewport
-						var lineBuilder strings.Builder
-						if m.showTimestamp {
-							t := time.Now().Format("15:04:05.000")
-							lineBuilder.WriteString(fmt.Sprintf("[%s] ", t))
-						}
-						lineBuilder.WriteString("> ")
-						lineBuilder.WriteString(selectedCmd)
-
-						m.messages = append(m.messages, m.senderStyle.Render(lineBuilder.String()))
-						m.viewport.SetContent(strings.Join(m.messages, "\n"))
-						m.viewport.GotoBottom()
-
-						// Clear textarea so Enter does not resend
-						m.textarea.SetValue("")
-						m.textarea.SetCursor(0)
-
-						// Refresh side window highlight
-						var historyLines []string
-						for i, cmd := range reversed {
-							if i == m.selectedCmdIndex {
-								historyLines = append(historyLines, lipgloss.NewStyle().Background(lipgloss.Color("57")).Foreground(lipgloss.Color("230")).Render(cmd))
-							} else {
-								historyLines = append(historyLines, cmd)
-							}
-						}
-						historyContent := "Command History:\n" + strings.Join(historyLines, "\n")
-						m.sideViewport.SetContent(lipgloss.NewStyle().Width(m.sideViewport.Width).Render(historyContent))
-					}
-				}
-			}
-		}
+		historyContent := strings.Join(m.cmdHist, "\n")
+		m.histVp.SetContent(lipgloss.NewStyle().Width(m.histVp.Width).Render(historyContent))
+		m.histVp.GotoBottom()
 
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "alt+m": // Toggle mouse support on/off
-			m.mouseEnabled = !m.mouseEnabled
-			if m.mouseEnabled {
-				return m, tea.EnableMouseCellMotion
-			}
-			return m, tea.DisableMouse
+		case "alt+m":
+			// nothing to do for now
 		}
 
+		// TODO use keymap
 		switch msg.Type {
 		case tea.KeyCtrlC, tea.KeyEsc:
-			// save current command history for next session
-			const maxLines = 50
-			// Check if the slice has more elements than the limit.
-			if len(m.commandHistory) > maxLines {
-				// If it does, re-assign 'lines' to a new sub-slice
-				// containing only the last 100 elements.
-				start := len(m.commandHistory) - maxLines
-				m.commandHistory = m.commandHistory[start:]
+			// save last x elemets of current command history for next session
+			const maxStoredCmds = 100
+			if len(m.cmdHist) > maxStoredCmds {
+				start := len(m.cmdHist) - maxStoredCmds
+				m.cmdHist = m.cmdHist[start:]
 			}
 
-			content := strings.Join(m.commandHistory, "\n") + "\n"
+			fileContent := strings.Join(m.cmdHist, "\n") + "\n"
 
-			err := os.WriteFile(m.commandHistoryFile, []byte(content), 0644)
+			err := os.WriteFile(m.cmdHistFile, []byte(fileContent), 0644)
 			if err != nil {
 				log.Fatal(err)
 			}
 			return m, tea.Quit
 		case tea.KeyCtrlUp:
-			m.viewport.ScrollUp(3)
+			m.serialVp.ScrollUp(3)
 		case tea.KeyCtrlDown:
-			m.viewport.ScrollDown(3)
+			m.serialVp.ScrollDown(3)
 		case tea.KeyUp:
-			if m.historyIndex > 0 {
-				m.historyIndex--
-				m.textarea.SetValue(m.commandHistory[m.historyIndex])
-				m.textarea.SetCursor(len(m.textarea.Value()))
+			if m.cmdHistIndex > 0 {
+				m.cmdHistIndex--
+				m.inputTa.SetValue(m.cmdHist[m.cmdHistIndex])
+				m.inputTa.SetCursor(len(m.inputTa.Value()))
 			}
 		case tea.KeyDown:
-			if m.historyIndex < len(m.commandHistory) {
-				m.historyIndex++
-				if m.historyIndex < len(m.commandHistory) {
-					m.textarea.SetValue(m.commandHistory[m.historyIndex])
-					m.textarea.SetCursor(len(m.textarea.Value()))
+			if m.cmdHistIndex < len(m.cmdHist) {
+				m.cmdHistIndex++
+				if m.cmdHistIndex < len(m.cmdHist) {
+					m.inputTa.SetValue(m.cmdHist[m.cmdHistIndex])
+					m.inputTa.SetCursor(len(m.inputTa.Value()))
 				} else {
 					// Cleared history, reset to empty
-					m.textarea.Reset()
+					m.inputTa.Reset()
 				}
 			}
 		case tea.KeyEnter:
-			userInput := m.textarea.Value()
+			userInput := m.inputTa.Value()
 			if userInput == "" {
 				return m, nil
 			}
 
-			// Add to history if not same as last stored
-			if userInput != m.commandHistory[len(m.commandHistory)-1] {
-				m.commandHistory = append(m.commandHistory, userInput)
+			// Add command to history if not same as last stored
+			if userInput != m.cmdHist[len(m.cmdHist)-1] {
+				m.cmdHist = append(m.cmdHist, userInput)
 			}
+			m.cmdHistIndex = len(m.cmdHist)
 
-			m.historyIndex = len(m.commandHistory)
-			// Send to serial port
-			stringToSend := userInput + "\r\n"
+			// Send command from ta to serial port -> TODO should not be done in update routine
+			stringToSend := userInput + "\r\n" //TODO add custom Lineending
 			_, err := m.port.Write([]byte(stringToSend))
 			if err != nil {
 				m.err = fmt.Errorf("error writing to serial port: %w", err)
@@ -309,34 +208,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Log the sent message to the viewport
 			var line strings.Builder
 			if m.showTimestamp {
-				t := time.Now().Format("15:04:05.000")
+				t := time.Now().Format("00:00:00.000")
 				line.WriteString(fmt.Sprintf("[%s] ", t))
 			}
 			line.WriteString("> ")
 			line.WriteString(userInput)
 
-			m.messages = append(m.messages, m.senderStyle.Render(line.String()))
-			m.viewport.SetContent(strings.Join(m.messages, "\n"))
-			m.viewport.GotoBottom()
-			m.textarea.Reset()
+			// TODO set serial message histrory limit, remove oldest if exceed
+			m.serMessages = append(m.serMessages, m.rxMessageStyle.Render(line.String())) // TODO directly use style for var()
+			m.serialVp.SetContent(strings.Join(m.serMessages, "\n"))
+			m.serialVp.GotoBottom()
+			m.inputTa.Reset()
 
-			// Update side window with command history after sending a command
-			// Update side window with command history (latest on top)
-			reversed := make([]string, len(m.commandHistory))
-			for i, v := range m.commandHistory {
-				reversed[len(m.commandHistory)-1-i] = v
-			}
-			var historyLines []string
-			for i, cmd := range reversed {
-				if i == m.selectedCmdIndex {
-					historyLines = append(historyLines, lipgloss.NewStyle().Background(lipgloss.Color("57")).Foreground(lipgloss.Color("230")).Render(cmd))
-				} else {
-					historyLines = append(historyLines, cmd)
-				}
-			}
-			historyContent := "Command History:\n" + strings.Join(historyLines, "\n")
-			m.sideViewport.SetContent(lipgloss.NewStyle().Width(m.sideViewport.Width).Render(historyContent))
-
+			// Update command history viewport after sending a command
+			// TODO create method and use also in window size message
+			historyContent := strings.Join(m.cmdHist, "\n")
+			m.histVp.SetContent(lipgloss.NewStyle().Width(m.histVp.Width).Render(historyContent))
+			m.histVp.GotoBottom()
 		}
 
 	case serialMsg:
@@ -348,14 +236,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		line.WriteString("< ")
 		line.WriteString(string(msg))
 
-		m.messages = append(m.messages, line.String())
+		// TODO set serial message histrory limit, remove oldest if exceed
+		m.serMessages = append(m.serMessages, line.String())
+		m.serialVp.SetContent(lipgloss.NewStyle().Width(m.serialVp.Width).Render(strings.Join(m.serMessages, "\n")))
+		m.serialVp.GotoBottom()
 
-		m.viewport.SetContent(strings.Join(m.messages, "\n"))
-		m.viewport.GotoBottom()
-
-	// We handle errors just like any other message
 	case errMsg:
-		m.err = msg.err
+		m.err = error(msg)
 		return m, nil
 	}
 
@@ -363,31 +250,34 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
-	var footerText string
-	if m.mouseEnabled {
-		footerText = "Scrolling: ON | Press Alt+M to disable mouse scrollin and select text."
-	} else {
-		footerText = "Scrolling: OFF | Press Alt+M to re-enable mouse scrolling."
-	}
-	footerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 
-	// Arrange the two viewports side by side
-	row := lipgloss.JoinHorizontal(
+	footerText := "↑/↓: scroll command history · ctrl+↑/↓: scroll message history"
+	footer := footerStyle.Render(footerText)
+
+	// Arrange viewports side by side
+	viewports := lipgloss.JoinHorizontal(
 		lipgloss.Top,
-		m.viewport.View(),
-		m.sideViewport.View(),
+		m.serialVp.View(),
+		m.histVp.View(),
 	)
 
-	return fmt.Sprintf(
-		"%s%s%s\n%s",
-		row,
-		gap,
-		m.textarea.View(),
-		footerStyle.Render(footerText),
+	screen := lipgloss.JoinVertical(
+		lipgloss.Left,
+		viewports,
+		m.inputTa.View(),
+		footer,
+	)
+
+	return lipgloss.Place(
+		m.width,
+		m.height,
+		lipgloss.Center,
+		lipgloss.Center,
+		screen,
 	)
 }
 
-// readFromPort continuously reads from the serial port and sends messages to the bubbletea program.
+// readFromPort continuously reads from the serial port and sends messages to bubbletea.
 func readFromPort(p *tea.Program, port serial.Port) {
 	scanner := bufio.NewScanner(port)
 	for scanner.Scan() {
@@ -396,13 +286,11 @@ func readFromPort(p *tea.Program, port serial.Port) {
 	}
 	if err := scanner.Err(); err != nil {
 		if err != io.EOF && err != context.Canceled {
-			p.Send(errMsg{err})
+			p.Send(errMsg(err))
 		}
 	}
 }
 
-// Main routine opens the serial port and starts the transmit
-// and receive go routines.
 func main() {
 
 	listPtr := flag.Bool("l", false, "list available ports")
@@ -469,8 +357,6 @@ func main() {
 	}
 
 	defer port.Close()
-
-	//defer cmdHistoryFile.Close()
 
 	p := tea.NewProgram(initialModel(port, showTimestamp, cmdHistoryLines, commandHistoryFile), tea.WithAltScreen(), tea.WithMouseCellMotion())
 

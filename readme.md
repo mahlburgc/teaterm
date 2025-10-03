@@ -33,3 +33,5 @@ go install github.com/mahlburgc/teaterm@latest
 - https://leg100.github.io/en/posts/building-bubbletea-programs/
 - https://github.com/lrstanley/bubblezone
 - https://github.com/charmbracelet/bubbletea
+- https://github.com/charmbracelet/vhs?tab=readme-ov-file
+- https://github.com/spf13/cobra
