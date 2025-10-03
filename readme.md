@@ -11,7 +11,7 @@ This version is very alpha! ;)
 GO
 
 ```shell
-go install github.com/mahlburgc/teaterm
+go install github.com/mahlburgc/teaterm@latest
 ```
 
 ## Planned features
