@@ -173,16 +173,40 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cmdHistIndex--
 				m.inputTa.SetValue(m.cmdHist[m.cmdHistIndex])
 				m.inputTa.SetCursor(len(m.inputTa.Value()))
+
+				var cmdHistLines []string //TODO remove duplicated code
+				for i, cmd := range m.cmdHist {
+					if i == m.cmdHistIndex {
+						cmdHistLines = append(cmdHistLines, lipgloss.NewStyle().Background(lipgloss.Color("57")).Foreground(lipgloss.Color("230")).Render(cmd))
+					} else {
+						cmdHistLines = append(cmdHistLines, cmd)
+					}
+				}
+				cmdHistContent := strings.Join(cmdHistLines, "\n")
+				m.histVp.SetContent(lipgloss.NewStyle().Width(m.histVp.Width).Render(cmdHistContent))
 			}
+
 		case tea.KeyDown:
 			if m.cmdHistIndex < len(m.cmdHist) {
 				m.cmdHistIndex++
 				if m.cmdHistIndex < len(m.cmdHist) {
 					m.inputTa.SetValue(m.cmdHist[m.cmdHistIndex])
 					m.inputTa.SetCursor(len(m.inputTa.Value()))
+
+					var cmdHistLines []string //TODO remove duplicated code
+					for i, cmd := range m.cmdHist {
+						if i == m.cmdHistIndex {
+							cmdHistLines = append(cmdHistLines, lipgloss.NewStyle().Background(lipgloss.Color("57")).Foreground(lipgloss.Color("230")).Render(cmd))
+						} else {
+							cmdHistLines = append(cmdHistLines, cmd)
+						}
+					}
+					cmdHistContent := strings.Join(cmdHistLines, "\n")
+					m.histVp.SetContent(lipgloss.NewStyle().Width(m.histVp.Width).Render(cmdHistContent))
 				} else {
 					// Cleared history, reset to empty
 					m.inputTa.Reset()
+					m.histVp.SetContent(lipgloss.NewStyle().Width(m.histVp.Width).Render(strings.Join(m.cmdHist, "\n")))
 				}
 			}
 		case tea.KeyEnter:
@@ -358,7 +382,7 @@ func main() {
 
 	defer port.Close()
 
-	p := tea.NewProgram(initialModel(port, showTimestamp, cmdHistoryLines, commandHistoryFile), tea.WithAltScreen(), tea.WithMouseCellMotion())
+	p := tea.NewProgram(initialModel(port, showTimestamp, cmdHistoryLines, commandHistoryFile), tea.WithAltScreen())
 
 	go readFromPort(p, port)
 
