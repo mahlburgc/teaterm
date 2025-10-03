@@ -15,6 +15,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/davecgh/go-spew/spew"
 
 	"go.bug.st/serial"
 	"go.bug.st/serial/enumerator"
@@ -42,6 +43,7 @@ var (
 )
 
 type model struct {
+	dump           io.Writer
 	serialVp       viewport.Model
 	histVp         viewport.Model
 	serMessages    []string
@@ -57,7 +59,7 @@ type model struct {
 	height         int
 }
 
-func initialModel(port serial.Port, showTimestamp bool, cmdHist []string, cmdHistFile string) model {
+func initialModel(port serial.Port, showTimestamp bool, cmdHist []string, cmdHistFile string, dump io.Writer) model {
 	ta := textarea.New()
 	ta.Placeholder = "Send a message..."
 	ta.Focus()
@@ -88,6 +90,7 @@ func initialModel(port serial.Port, showTimestamp bool, cmdHist []string, cmdHis
 	ta.KeyMap.InsertNewline.SetEnabled(false) //TODO check
 
 	return model{
+		dump:           dump,
 		inputTa:        ta,
 		serMessages:    []string{},
 		serialVp:       serialVp,
@@ -109,6 +112,10 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+
+	// if m.dump != nil {
+	// 	spew.Fdump(m.dump, msg)
+	// }
 	var (
 		tiCmd tea.Cmd
 		vpCmd tea.Cmd
@@ -215,11 +222,27 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 
-			// Add command to history if not same as last stored
-			if userInput != m.cmdHist[len(m.cmdHist)-1] {
+			// Add command to history
+			// if command is already found in the command histroy, just move command to end to avoid
+			// duplicated commands in command history
+			foundIndex := -1
+			for i, cmd := range m.cmdHist {
+				spew.Fdump(m.dump, "%v, %s, %s\n", i, cmd, userInput)
+				if cmd == userInput {
+					spew.Sdump("found")
+					foundIndex = i
+					break
+				}
+			}
+
+			if foundIndex != -1 {
+				spew.Fdump(m.dump, m.cmdHist)
+				m.cmdHist = append(m.cmdHist[:foundIndex], m.cmdHist[foundIndex+1:]...)
+				spew.Fdump(m.dump, m.cmdHist)
+				m.cmdHist = append(m.cmdHist, userInput)
+			} else {
 				m.cmdHist = append(m.cmdHist, userInput)
 			}
-			m.cmdHistIndex = len(m.cmdHist)
 
 			// Send command from ta to serial port -> TODO should not be done in update routine
 			stringToSend := userInput + "\r\n" //TODO add custom Lineending
@@ -249,6 +272,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			historyContent := strings.Join(m.cmdHist, "\n")
 			m.histVp.SetContent(lipgloss.NewStyle().Width(m.histVp.Width).Render(historyContent))
 			m.histVp.GotoBottom()
+			m.cmdHistIndex = len(m.cmdHist)
 		}
 
 	case serialMsg:
@@ -317,6 +341,15 @@ func readFromPort(p *tea.Program, port serial.Port) {
 
 func main() {
 
+	var dump *os.File
+	if _, ok := os.LookupEnv("DEBUG"); ok {
+		var err error
+		dump, err = os.OpenFile("messages.log", os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+		if err != nil {
+			os.Exit(1)
+		}
+	}
+
 	listPtr := flag.Bool("l", false, "list available ports")
 	portPtr := flag.String("p", "/dev/ttyUSB0", "serial port")
 	timestampPtr := flag.Bool("t", false, "show timestamp")
@@ -342,7 +375,11 @@ func main() {
 
 	cmdhist, err := os.ReadFile(commandHistoryFile)
 	if err != nil {
-		log.Fatal(err)
+		if os.IsNotExist(err) {
+			cmdhist = []byte{}
+		} else {
+			log.Fatal(err)
+		}
 	}
 	cmdHistory := string(cmdhist)
 
@@ -382,7 +419,7 @@ func main() {
 
 	defer port.Close()
 
-	p := tea.NewProgram(initialModel(port, showTimestamp, cmdHistoryLines, commandHistoryFile), tea.WithAltScreen())
+	p := tea.NewProgram(initialModel(port, showTimestamp, cmdHistoryLines, commandHistoryFile, dump), tea.WithAltScreen())
 
 	go readFromPort(p, port)
 
