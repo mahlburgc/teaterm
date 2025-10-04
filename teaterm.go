@@ -24,6 +24,7 @@ import (
 
 type serialMsg string
 type errMsg error
+type portConnectedMsg serial.Port
 
 var (
 	cursorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("212"))
@@ -51,6 +52,8 @@ type model struct {
 	rxMessageStyle lipgloss.Style
 	err            error
 	port           serial.Port
+	selectedPort   string
+	selectedMode   *serial.Mode
 	showTimestamp  bool
 	cmdHist        []string
 	cmdHistFile    string
@@ -60,7 +63,7 @@ type model struct {
 	conStatus      bool
 }
 
-func initialModel(port serial.Port, showTimestamp bool, cmdHist []string, cmdHistFile string, dump io.Writer) model {
+func initialModel(port serial.Port, showTimestamp bool, cmdHist []string, cmdHistFile string, dump io.Writer, selectedPort string, selectedMode *serial.Mode) model {
 	ta := textarea.New()
 	ta.Placeholder = "Send a message..."
 	ta.Focus()
@@ -99,6 +102,8 @@ func initialModel(port serial.Port, showTimestamp bool, cmdHist []string, cmdHis
 		rxMessageStyle: focusedPlaceholderStyle,
 		err:            nil,
 		port:           port,
+		selectedPort:   selectedPort,
+		selectedMode:   selectedMode,
 		showTimestamp:  showTimestamp,
 		cmdHist:        cmdHist,
 		cmdHistIndex:   len(cmdHist),
@@ -110,7 +115,7 @@ func initialModel(port serial.Port, showTimestamp bool, cmdHist []string, cmdHis
 }
 
 func (m model) Init() tea.Cmd {
-	return textarea.Blink
+	return tea.Batch(textarea.Blink, readFromPort(m.port, m.dump))
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -338,12 +343,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.serMessages = append(m.serMessages, line.String())
 		m.serialVp.SetContent(lipgloss.NewStyle().Width(m.serialVp.Width).Render(strings.Join(m.serMessages, "\n")))
 		m.serialVp.GotoBottom()
+		vpCmd = readFromPort(m.port, m.dump)
 
 	case *serial.PortError:
 		switch msg.Code() {
 		case serial.PortClosed:
 			m.conStatus = false
+			m.port.Close()
+			tiCmd = reconnectPort(m.selectedPort, m.selectedMode)
 		}
+
+	case portConnectedMsg:
+		m.conStatus = true
+		m.port = msg
+		vpCmd = readFromPort(m.port, m.dump)
 
 	case errMsg:
 		m.err = error(msg)
@@ -392,18 +405,40 @@ func (m model) View() string {
 	)
 }
 
-// readFromPort continuously reads from the serial port and sends messages to bubbletea.
-func readFromPort(p *tea.Program, port serial.Port, dump io.Writer) {
-	scanner := bufio.NewScanner(port)
-	for scanner.Scan() {
-		line := scanner.Text()
-		p.Send(serialMsg(line))
-	}
-	if err := scanner.Err(); err != nil {
-		//spew.Fdump(dump, "read error:", err)
-		if err != io.EOF && err != context.Canceled {
-			p.Send(errMsg(err))
+// try to reconnect to the serial port we connected on startup
+func reconnectPort(selectedPort string, selectedMode *serial.Mode) tea.Cmd {
+	return func() tea.Msg {
+		var port serial.Port
+		var err error
+
+		for {
+			port, err = serial.Open(selectedPort, selectedMode)
+			if err != nil {
+				time.Sleep(1000)
+			} else {
+				break
+			}
 		}
+		return portConnectedMsg(port)
+	}
+}
+
+func readFromPort(port serial.Port, dump io.Writer) tea.Cmd {
+	return func() tea.Msg {
+		var line string
+		scanner := bufio.NewScanner(port)
+		for scanner.Scan() {
+			line = scanner.Text()
+			break
+		}
+
+		if err := scanner.Err(); err != nil {
+			//spew.Fdump(dump, "read error:", err)
+			if err != io.EOF && err != context.Canceled {
+				return errMsg(err)
+			}
+		}
+		return serialMsg(line)
 	}
 }
 
@@ -489,9 +524,8 @@ func main() {
 
 	defer port.Close()
 
-	p := tea.NewProgram(initialModel(port, showTimestamp, cmdHistoryLines, commandHistoryFile, dump), tea.WithAltScreen())
-
-	go readFromPort(p, port, dump)
+	m := initialModel(port, showTimestamp, cmdHistoryLines, commandHistoryFile, dump, *portPtr, mode)
+	p := tea.NewProgram(m, tea.WithAltScreen())
 
 	if _, err := p.Run(); err != nil {
 		log.Fatal(err)
