@@ -57,6 +57,7 @@ type model struct {
 	cmdHistIndex   int
 	width          int
 	height         int
+	conStatus      bool
 }
 
 func initialModel(port serial.Port, showTimestamp bool, cmdHist []string, cmdHistFile string, dump io.Writer) model {
@@ -104,6 +105,7 @@ func initialModel(port serial.Port, showTimestamp bool, cmdHist []string, cmdHis
 		cmdHistFile:    cmdHistFile,
 		width:          0,
 		height:         0,
+		conStatus:      true,
 	}
 }
 
@@ -293,6 +295,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			stringToSend := userInput + "\r\n" //TODO add custom Lineending
 			_, err := m.port.Write([]byte(stringToSend))
 			if err != nil {
+				spew.Fdump(m.dump, "write error:", err)
 				m.err = fmt.Errorf("error writing to serial port: %w", err)
 				return m, nil
 			}
@@ -336,6 +339,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.serialVp.SetContent(lipgloss.NewStyle().Width(m.serialVp.Width).Render(strings.Join(m.serMessages, "\n")))
 		m.serialVp.GotoBottom()
 
+	case *serial.PortError:
+		switch msg.Code() {
+		case serial.PortClosed:
+			m.conStatus = false
+		}
+
 	case errMsg:
 		m.err = error(msg)
 		return m, nil
@@ -346,7 +355,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) View() string {
 
-	footerText := "↑/↓: scroll commands · PageUp/PageDown: scroll messages"
+	var connectionText string
+	if m.conStatus {
+		connectionText = "connected | "
+	} else {
+		connectionText = "disconnected | "
+	}
+
+	footerText := connectionText + "↑/↓: scroll commands · PageUp/PageDown: scroll messages"
 	if m.cmdHistIndex != len(m.cmdHist) {
 		footerText += " · ctrl+d: delete command"
 	}
@@ -377,13 +393,14 @@ func (m model) View() string {
 }
 
 // readFromPort continuously reads from the serial port and sends messages to bubbletea.
-func readFromPort(p *tea.Program, port serial.Port) {
+func readFromPort(p *tea.Program, port serial.Port, dump io.Writer) {
 	scanner := bufio.NewScanner(port)
 	for scanner.Scan() {
 		line := scanner.Text()
 		p.Send(serialMsg(line))
 	}
 	if err := scanner.Err(); err != nil {
+		//spew.Fdump(dump, "read error:", err)
 		if err != io.EOF && err != context.Canceled {
 			p.Send(errMsg(err))
 		}
@@ -474,7 +491,7 @@ func main() {
 
 	p := tea.NewProgram(initialModel(port, showTimestamp, cmdHistoryLines, commandHistoryFile, dump), tea.WithAltScreen())
 
-	go readFromPort(p, port)
+	go readFromPort(p, port, dump)
 
 	if _, err := p.Run(); err != nil {
 		log.Fatal(err)
