@@ -52,6 +52,7 @@ type model struct {
 	rxMessageStyle lipgloss.Style
 	err            error
 	port           serial.Port
+	scanner        *bufio.Scanner
 	selectedPort   string
 	selectedMode   *serial.Mode
 	showTimestamp  bool
@@ -93,6 +94,8 @@ func initialModel(port serial.Port, showTimestamp bool, cmdHist []string, cmdHis
 	serialVp.KeyMap.PageUp.SetEnabled(false)
 	serialVp.KeyMap.PageDown.SetEnabled(false)
 
+	scanner := bufio.NewScanner(port)
+
 	return model{
 		dump:           dump,
 		inputTa:        ta,
@@ -102,6 +105,7 @@ func initialModel(port serial.Port, showTimestamp bool, cmdHist []string, cmdHis
 		rxMessageStyle: focusedPlaceholderStyle,
 		err:            nil,
 		port:           port,
+		scanner:        scanner,
 		selectedPort:   selectedPort,
 		selectedMode:   selectedMode,
 		showTimestamp:  showTimestamp,
@@ -115,7 +119,7 @@ func initialModel(port serial.Port, showTimestamp bool, cmdHist []string, cmdHis
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(textarea.Blink, readFromPort(m.port, m.dump))
+	return tea.Batch(textarea.Blink, readFromPort(m.scanner, m.dump))
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -343,7 +347,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.serMessages = append(m.serMessages, line.String())
 		m.serialVp.SetContent(lipgloss.NewStyle().Width(m.serialVp.Width).Render(strings.Join(m.serMessages, "\n")))
 		m.serialVp.GotoBottom()
-		vpCmd = readFromPort(m.port, m.dump)
+		vpCmd = readFromPort(m.scanner, m.dump)
 
 	case *serial.PortError:
 		switch msg.Code() {
@@ -356,7 +360,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case portConnectedMsg:
 		m.conStatus = true
 		m.port = msg
-		vpCmd = readFromPort(m.port, m.dump)
+		m.scanner = bufio.NewScanner(m.port)
+		vpCmd = readFromPort(m.scanner, m.dump)
 
 	case errMsg:
 		m.err = error(msg)
@@ -423,13 +428,11 @@ func reconnectPort(selectedPort string, selectedMode *serial.Mode) tea.Cmd {
 	}
 }
 
-func readFromPort(port serial.Port, dump io.Writer) tea.Cmd {
+func readFromPort(scanner *bufio.Scanner, dump io.Writer) tea.Cmd {
 	return func() tea.Msg {
-		var line string
-		scanner := bufio.NewScanner(port)
 		for scanner.Scan() {
-			line = scanner.Text()
-			break
+			line := scanner.Text()
+			return serialMsg(line)
 		}
 
 		if err := scanner.Err(); err != nil {
@@ -438,7 +441,7 @@ func readFromPort(port serial.Port, dump io.Writer) tea.Cmd {
 				return errMsg(err)
 			}
 		}
-		return serialMsg(line)
+		return nil
 	}
 }
 
