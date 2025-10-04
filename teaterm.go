@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/cursor"
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -27,7 +28,8 @@ type errMsg error
 type portConnectedMsg serial.Port
 
 var (
-	cursorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("212"))
+	cursorStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("212"))
+	connectSymbolStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("77"))
 
 	focusedPlaceholderStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("99"))
@@ -62,6 +64,7 @@ type model struct {
 	width          int
 	height         int
 	conStatus      bool
+	spinner        spinner.Model
 }
 
 func initialModel(port serial.Port, showTimestamp bool, cmdHist []string, cmdHistFile string, dump io.Writer, selectedPort string, selectedMode *serial.Mode) model {
@@ -94,6 +97,10 @@ func initialModel(port serial.Port, showTimestamp bool, cmdHist []string, cmdHis
 	serialVp.KeyMap.PageUp.SetEnabled(false)
 	serialVp.KeyMap.PageDown.SetEnabled(false)
 
+	s := spinner.New()
+	s.Spinner = spinner.Dot
+	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+
 	scanner := bufio.NewScanner(port)
 
 	return model{
@@ -115,6 +122,7 @@ func initialModel(port serial.Port, showTimestamp bool, cmdHist []string, cmdHis
 		width:          0,
 		height:         0,
 		conStatus:      true,
+		spinner:        s,
 	}
 }
 
@@ -134,6 +142,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var (
 		tiCmd tea.Cmd
 		vpCmd tea.Cmd
+		spCmd tea.Cmd
 	)
 
 	m.inputTa, tiCmd = m.inputTa.Update(msg)
@@ -355,6 +364,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.conStatus = false
 			m.port.Close()
 			tiCmd = reconnectPort(m.selectedPort, m.selectedMode)
+			spCmd = m.spinner.Tick
 		}
 
 	case portConnectedMsg:
@@ -366,26 +376,35 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case errMsg:
 		m.err = error(msg)
 		return m, nil
+
+	case spinner.TickMsg:
+		if !m.conStatus {
+			var cmd tea.Cmd
+			m.spinner, cmd = m.spinner.Update(msg)
+			return m, cmd
+		}
 	}
 
-	return m, tea.Batch(tiCmd, vpCmd)
+	return m, tea.Batch(tiCmd, vpCmd, spCmd)
 }
 
 func (m model) View() string {
 
 	var connectionText string
+	connectSymbol := connectSymbolStyle.Render("●")
+	//connectSymbol := connectSymbolStyle.Render("⇄")
 	if m.conStatus {
-		connectionText = "connected | "
+		connectionText = fmt.Sprintf(" %s ", connectSymbol)
 	} else {
-		connectionText = "disconnected | "
+		connectionText = fmt.Sprintf(" %s", m.spinner.View())
 	}
 
-	footerText := connectionText + "↑/↓: scroll commands · PageUp/PageDown: scroll messages"
+	helpText := "| ↑/↓: scroll commands · PageUp/PageDown: scroll messages"
 	if m.cmdHistIndex != len(m.cmdHist) {
-		footerText += " · ctrl+d: delete command"
+		helpText += " · ctrl+d: delete command"
 	}
 
-	footer := footerStyle.Render(footerText)
+	footer := connectionText + footerStyle.Render(helpText)
 
 	// Arrange viewports side by side
 	viewports := lipgloss.JoinHorizontal(
