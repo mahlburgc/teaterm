@@ -74,11 +74,10 @@ func initialModel(port serial.Port, showTimestamp bool, cmdHist []string, cmdHis
 	ta.SetHeight(1)
 
 	serialVp := viewport.New(30, 5)
-	serialVp.SetContent(`Welcome to the teaterm!`)
+	serialVp.SetContent(`Welcome to teaterm!`)
 	serialVp.Style = focusedBorderStyle
 
 	histVp := viewport.New(30, 5)
-	histVp.SetContent("Command History")
 	histVp.Style = focusedBorderStyle
 
 	// Disable the viewport's default up/down key handling so it doesn't scroll
@@ -87,6 +86,8 @@ func initialModel(port serial.Port, showTimestamp bool, cmdHist []string, cmdHis
 	serialVp.KeyMap.Down.SetEnabled(false)
 
 	ta.KeyMap.InsertNewline.SetEnabled(false) //TODO check
+	serialVp.KeyMap.PageUp.SetEnabled(false)
+	serialVp.KeyMap.PageDown.SetEnabled(false)
 
 	return model{
 		dump:           dump,
@@ -174,10 +175,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				log.Fatal(err)
 			}
 			return m, tea.Quit
-		case tea.KeyCtrlUp:
+		case tea.KeyPgUp:
 			m.serialVp.ScrollUp(3)
-		case tea.KeyCtrlDown:
+			return m, nil
+		case tea.KeyPgDown:
 			m.serialVp.ScrollDown(3)
+			return m, nil
 		case tea.KeyCtrlD:
 			if m.cmdHistIndex != len(m.cmdHist) {
 				// delete cmd from command history
@@ -234,6 +237,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						}
 					}
 
+					//TODO remove duplicated code
 					spew.Fdump(m.dump, "cmd history len:", len(m.cmdHist))
 					spew.Fdump(m.dump, "history hight:", m.histVp.Height)
 					spew.Fdump(m.dump, "command index:", m.cmdHistIndex)
@@ -311,6 +315,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Update command history viewport after sending a command
 			// TODO create method and use also in window size message
 			historyContent := strings.Join(m.cmdHist, "\n")
+			spew.Fdump(m.dump, "history list", m.cmdHist)
+			spew.Fdump(m.dump, "history content", historyContent)
 			m.histVp.SetContent(lipgloss.NewStyle().Width(m.histVp.Width).Render(historyContent))
 			m.histVp.GotoBottom()
 			m.cmdHistIndex = len(m.cmdHist)
@@ -340,7 +346,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) View() string {
 
-	footerText := "↑/↓: scroll commands · ctrl+↑/↓: scroll messages"
+	footerText := "↑/↓: scroll commands · PageUp/PageDown: scroll messages"
 	if m.cmdHistIndex != len(m.cmdHist) {
 		footerText += " · ctrl+d: delete command"
 	}
@@ -421,18 +427,20 @@ func main() {
 	cmdhist, err := os.ReadFile(commandHistoryFile)
 	if err != nil {
 		if os.IsNotExist(err) {
-			cmdhist = []byte{}
+			cmdhist = nil
 		} else {
 			log.Fatal(err)
 		}
 	}
-	cmdHistory := string(cmdhist)
 
-	// 1. Trim leading/trailing whitespace (including newlines)
-	trimmedContent := strings.TrimSpace(cmdHistory)
+	var cmdHistoryLines []string
 
-	// Split the string by the newline character
-	cmdHistoryLines := strings.Split(trimmedContent, "\n")
+	if cmdhist != nil {
+		// Trim leading/trailing whitespace (including newlines)
+		trimmedContent := strings.TrimSpace(string(cmdhist))
+		// Split the string by the newline character
+		cmdHistoryLines = strings.Split(trimmedContent, "\n")
+	}
 
 	ports, err := enumerator.GetDetailedPortsList()
 	if err != nil {
@@ -471,5 +479,5 @@ func main() {
 	if _, err := p.Run(); err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("Command history saved under %s!\n", commandHistoryFile)
+	//fmt.Printf("Command history saved under %s!\n", commandHistoryFile)
 }
