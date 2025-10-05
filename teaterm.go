@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -77,6 +76,7 @@ func initialModel(port serial.Port, showTimestamp bool, cmdHist []string, cmdHis
 	ta.FocusedStyle.Placeholder = focusedPlaceholderStyle
 	ta.FocusedStyle.Base = focusedBorderStyle
 	ta.FocusedStyle.CursorLine = lipgloss.NewStyle() // Remove cursor line styling
+	ta.BlurredStyle.Base = focusedBorderStyle
 	ta.ShowLineNumbers = false
 	ta.SetWidth(30)
 	ta.SetHeight(1)
@@ -127,26 +127,25 @@ func initialModel(port serial.Port, showTimestamp bool, cmdHist []string, cmdHis
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(textarea.Blink, readFromPort(m.scanner, m.dump))
+	return tea.Batch(textarea.Blink, readFromPort(m.scanner))
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
-	switch msg := msg.(type) {
-	case cursor.BlinkMsg:
-		//avoid print cursor blink
-	default:
-		spew.Fdump(m.dump, msg)
-	}
+	// switch msg := msg.(type) {
+	// case cursor.BlinkMsg:
+	// 	//avoid print cursor blink
+	// default:
+	// 	spew.Fdump(m.dump, msg)
+	// }
 
-	var (
-		tiCmd tea.Cmd
-		vpCmd tea.Cmd
-		spCmd tea.Cmd
-	)
+	var cmds []tea.Cmd
+	var cmd tea.Cmd
 
-	m.inputTa, tiCmd = m.inputTa.Update(msg)
-	m.serialVp, vpCmd = m.serialVp.Update(msg)
+	m.inputTa, cmd = m.inputTa.Update(msg)
+	cmds = append(cmds, cmd)
+	m.serialVp, cmd = m.serialVp.Update(msg)
+	cmds = append(cmds, cmd)
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -321,7 +320,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Log the sent message to the viewport
 			var line strings.Builder
 			if m.showTimestamp {
-				t := time.Now().Format("00:00:00.000")
+				t := time.Now().Format("15:04:05.000")
 				line.WriteString(fmt.Sprintf("[%s] ", t))
 			}
 			// line.WriteString("> ")
@@ -344,6 +343,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case serialMsg:
+		cmd = readFromPort(m.scanner)
+		cmds = append(cmds, cmd)
 		var line strings.Builder
 		if m.showTimestamp {
 			t := time.Now().Format("15:04:05.000")
@@ -356,36 +357,41 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.serMessages = append(m.serMessages, line.String())
 		m.serialVp.SetContent(lipgloss.NewStyle().Width(m.serialVp.Width).Render(strings.Join(m.serMessages, "\n")))
 		m.serialVp.GotoBottom()
-		vpCmd = readFromPort(m.scanner, m.dump)
 
 	case *serial.PortError:
 		switch msg.Code() {
 		case serial.PortClosed:
+			m.inputTa.Blur()
 			m.conStatus = false
 			m.port.Close()
-			tiCmd = reconnectPort(m.selectedPort, m.selectedMode)
-			spCmd = m.spinner.Tick
+			// m.inputTa.Placeholder = fmt.Sprintf("Reconnecting to %s...", m.selectedPort)
+			cmd = reconnectPort(m.selectedPort, m.selectedMode)
+			cmds = append(cmds, cmd)
+			cmd = m.spinner.Tick
+			cmds = append(cmds, cmd)
 		}
 
 	case portConnectedMsg:
+		m.inputTa.Placeholder = "Send a message..." //TODO remove duplicated code
+		cmd = m.inputTa.Focus()
+		cmds = append(cmds, cmd)
 		m.conStatus = true
 		m.port = msg
 		m.scanner = bufio.NewScanner(m.port)
-		vpCmd = readFromPort(m.scanner, m.dump)
+		cmd = readFromPort(m.scanner)
+		cmds = append(cmds, cmd)
 
 	case errMsg:
 		m.err = error(msg)
-		return m, nil
 
 	case spinner.TickMsg:
 		if !m.conStatus {
-			var cmd tea.Cmd
 			m.spinner, cmd = m.spinner.Update(msg)
-			return m, cmd
+			cmds = append(cmds, cmd)
 		}
 	}
 
-	return m, tea.Batch(tiCmd, vpCmd, spCmd)
+	return m, tea.Batch(cmds...)
 }
 
 func (m model) View() string {
@@ -399,9 +405,9 @@ func (m model) View() string {
 		connectionText = fmt.Sprintf(" %s", m.spinner.View())
 	}
 
-	helpText := "| ↑/↓: scroll commands · PageUp/PageDown: scroll messages"
+	helpText := "| ↑/↓: cmds · PgUp/PgDn: scroll"
 	if m.cmdHistIndex != len(m.cmdHist) {
-		helpText += " · ctrl+d: delete command"
+		helpText += " · ctrl+d: del"
 	}
 
 	footer := connectionText + footerStyle.Render(helpText)
@@ -447,7 +453,7 @@ func reconnectPort(selectedPort string, selectedMode *serial.Mode) tea.Cmd {
 	}
 }
 
-func readFromPort(scanner *bufio.Scanner, dump io.Writer) tea.Cmd {
+func readFromPort(scanner *bufio.Scanner) tea.Cmd {
 	return func() tea.Msg {
 		for scanner.Scan() {
 			line := scanner.Text()
@@ -455,7 +461,6 @@ func readFromPort(scanner *bufio.Scanner, dump io.Writer) tea.Cmd {
 		}
 
 		if err := scanner.Err(); err != nil {
-			//spew.Fdump(dump, "read error:", err)
 			if err != io.EOF && err != context.Canceled {
 				return errMsg(err)
 			}

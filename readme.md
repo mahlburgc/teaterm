@@ -35,3 +35,4 @@ go install github.com/mahlburgc/teaterm@latest
 - https://github.com/charmbracelet/bubbletea
 - https://github.com/charmbracelet/vhs?tab=readme-ov-file
 - https://github.com/spf13/cobra
+- https://github.com/charm-and-friends/additional-bubbles?tab=readme-ov-file#additional-bubbles
