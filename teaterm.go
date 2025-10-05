@@ -27,43 +27,38 @@ type errMsg error
 type portConnectedMsg serial.Port
 
 var (
-	cursorStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("212"))
-	connectSymbolStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("77"))
-
-	focusedPlaceholderStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("99"))
-
-	focusedBorderStyle = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color("238"))
-
-	footerStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("245"))
-
-	//selectedCmdStyle = lipgloss.NewStyle().Background(lipgloss.Color("57")).Foreground(lipgloss.Color("230"))
-	selectedCmdStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("99"))
+	cursorStyle             = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+	connectSymbolStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("77"))
+	focusedPlaceholderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("245")) //99
+	focusedBorderStyle      = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("242"))
+	selectedCmdStyle        = cursorStyle
+	spinnerStyle            = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+	vpTxMsgStyle            = cursorStyle
+	footerStyle             = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	focusedPromtStyle       = cursorStyle
+	blurredPromtStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	//selectedCmdStyle      = lipgloss.NewStyle().Background(lipgloss.Color("57")).Foreground(lipgloss.Color("230"))
 )
 
 type model struct {
-	dump           io.Writer
-	serialVp       viewport.Model
-	histVp         viewport.Model
-	serMessages    []string
-	inputTa        textarea.Model
-	rxMessageStyle lipgloss.Style
-	err            error
-	port           serial.Port
-	scanner        *bufio.Scanner
-	selectedPort   string
-	selectedMode   *serial.Mode
-	showTimestamp  bool
-	cmdHist        []string
-	cmdHistFile    string
-	cmdHistIndex   int
-	width          int
-	height         int
-	conStatus      bool
-	spinner        spinner.Model
+	dump          io.Writer
+	serialVp      viewport.Model
+	histVp        viewport.Model
+	serMessages   []string
+	inputTa       textarea.Model
+	err           error
+	port          serial.Port
+	scanner       *bufio.Scanner
+	selectedPort  string
+	selectedMode  *serial.Mode
+	showTimestamp bool
+	cmdHist       []string
+	cmdHistFile   string
+	cmdHistIndex  int
+	width         int
+	height        int
+	conStatus     bool
+	spinner       spinner.Model
 }
 
 func initialModel(port serial.Port, showTimestamp bool, cmdHist []string, cmdHistFile string, dump io.Writer, selectedPort string, selectedMode *serial.Mode) model {
@@ -74,6 +69,8 @@ func initialModel(port serial.Port, showTimestamp bool, cmdHist []string, cmdHis
 	ta.CharLimit = 256
 	ta.Cursor.Style = cursorStyle
 	ta.FocusedStyle.Placeholder = focusedPlaceholderStyle
+	ta.FocusedStyle.Prompt = focusedPromtStyle
+	ta.BlurredStyle.Prompt = blurredPromtStyle
 	ta.FocusedStyle.Base = focusedBorderStyle
 	ta.FocusedStyle.CursorLine = lipgloss.NewStyle() // Remove cursor line styling
 	ta.BlurredStyle.Base = focusedBorderStyle
@@ -99,30 +96,29 @@ func initialModel(port serial.Port, showTimestamp bool, cmdHist []string, cmdHis
 
 	s := spinner.New()
 	s.Spinner = spinner.Dot
-	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+	s.Style = spinnerStyle
 
 	scanner := bufio.NewScanner(port)
 
 	return model{
-		dump:           dump,
-		inputTa:        ta,
-		serMessages:    []string{},
-		serialVp:       serialVp,
-		histVp:         histVp,
-		rxMessageStyle: focusedPlaceholderStyle,
-		err:            nil,
-		port:           port,
-		scanner:        scanner,
-		selectedPort:   selectedPort,
-		selectedMode:   selectedMode,
-		showTimestamp:  showTimestamp,
-		cmdHist:        cmdHist,
-		cmdHistIndex:   len(cmdHist),
-		cmdHistFile:    cmdHistFile,
-		width:          0,
-		height:         0,
-		conStatus:      true,
-		spinner:        s,
+		dump:          dump,
+		inputTa:       ta,
+		serMessages:   []string{},
+		serialVp:      serialVp,
+		histVp:        histVp,
+		err:           nil,
+		port:          port,
+		scanner:       scanner,
+		selectedPort:  selectedPort,
+		selectedMode:  selectedMode,
+		showTimestamp: showTimestamp,
+		cmdHist:       cmdHist,
+		cmdHistIndex:  len(cmdHist),
+		cmdHistFile:   cmdHistFile,
+		width:         0,
+		height:        0,
+		conStatus:     true,
+		spinner:       s,
 	}
 }
 
@@ -327,7 +323,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			line.WriteString(userInput)
 
 			// TODO set serial message histrory limit, remove oldest if exceed
-			m.serMessages = append(m.serMessages, m.rxMessageStyle.Render(line.String())) // TODO directly use style for var()
+			m.serMessages = append(m.serMessages, vpTxMsgStyle.Render(line.String())) // TODO directly use style for var()
 			m.serialVp.SetContent(strings.Join(m.serMessages, "\n"))
 			m.serialVp.GotoBottom()
 			m.inputTa.Reset()
@@ -364,7 +360,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.inputTa.Blur()
 			m.conStatus = false
 			m.port.Close()
-			// m.inputTa.Placeholder = fmt.Sprintf("Reconnecting to %s...", m.selectedPort)
+			m.inputTa.Placeholder = fmt.Sprintf("Reconnecting to %s...", m.selectedPort)
 			cmd = reconnectPort(m.selectedPort, m.selectedMode)
 			cmds = append(cmds, cmd)
 			cmd = m.spinner.Tick
