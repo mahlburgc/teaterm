@@ -41,6 +41,7 @@ var (
 )
 
 type model struct {
+	ready         bool
 	dump          io.Writer
 	serialVp      viewport.Model
 	histVp        viewport.Model
@@ -78,12 +79,15 @@ func initialModel(port serial.Port, showTimestamp bool, cmdHist []string, cmdHis
 	ta.SetWidth(30)
 	ta.SetHeight(1)
 
+	// We want to create a viewport without border and later manually add the border to inject
+	// a title into the border
+	// Calculate the vertical and horizontal space taken by the border.
 	serialVp := viewport.New(30, 5)
 	serialVp.SetContent(`Welcome to teaterm!`)
-	serialVp.Style = focusedBorderStyle
+	serialVp.Style = lipgloss.NewStyle()
 
 	histVp := viewport.New(30, 5)
-	histVp.Style = focusedBorderStyle
+	histVp.Style = lipgloss.NewStyle()
 
 	// Disable the viewport's default up/down key handling so it doesn't scroll
 	// when we are navigating command history.
@@ -101,6 +105,7 @@ func initialModel(port serial.Port, showTimestamp bool, cmdHist []string, cmdHis
 	scanner := bufio.NewScanner(port)
 
 	return model{
+		ready:         false,
 		dump:          dump,
 		inputTa:       ta,
 		serMessages:   []string{},
@@ -149,23 +154,37 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 
 		screenWidth := msg.Width - 2
-		screenHight := msg.Height - 4
+		screenHight := msg.Height - 3
 
-		m.serialVp.Width = screenWidth / 4 * 3
-		m.histVp.Width = screenWidth - m.serialVp.Width
-		m.inputTa.SetWidth(screenWidth)
+		// Calculate the vertical and horizontal space taken by the border.
+		verticalMargin, horizontalMargin := focusedBorderStyle.GetFrameSize()
 
-		m.serialVp.Height = screenHight - m.inputTa.Height()
+		// The window has been resized, so update the viewport's dimensions.
+		m.serialVp.Width = screenWidth/4*3 - horizontalMargin
+		m.serialVp.Height = screenHight - m.inputTa.Height() - verticalMargin
+
+		//m.serialVp.Width = screenWidth / 4 * 3
+		m.histVp.Width = screenWidth - m.serialVp.Width - horizontalMargin
 		m.histVp.Height = m.serialVp.Height
+
+		m.inputTa.SetWidth(m.width)
+
+		//m.serialVp.Height = screenHight - m.inputTa.Height()
 
 		if len(m.serMessages) > 0 {
 			m.serialVp.SetContent(lipgloss.NewStyle().Width(m.serialVp.Width).Render(strings.Join(m.serMessages, "\n")))
 		}
-		m.serialVp.GotoBottom()
+
+		if m.serialVp.Height > 0 {
+			m.serialVp.GotoBottom()
+		}
 
 		historyContent := strings.Join(m.cmdHist, "\n")
 		m.histVp.SetContent(lipgloss.NewStyle().Width(m.histVp.Width).Render(historyContent))
-		m.histVp.GotoBottom()
+
+		if m.serialVp.Height > 0 {
+			m.histVp.GotoBottom()
+		}
 
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -357,10 +376,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case *serial.PortError:
 		switch msg.Code() {
 		case serial.PortClosed:
+			m.inputTa.Reset()
 			m.inputTa.Blur()
 			m.conStatus = false
 			m.port.Close()
-			m.inputTa.Placeholder = fmt.Sprintf("Reconnecting to %s...", m.selectedPort)
+			m.inputTa.Placeholder = "Reconnecting..."
 			cmd = reconnectPort(m.selectedPort, m.selectedMode)
 			cmds = append(cmds, cmd)
 			cmd = m.spinner.Tick
@@ -401,18 +421,55 @@ func (m model) View() string {
 		connectionText = fmt.Sprintf(" %s", m.spinner.View())
 	}
 
-	helpText := "| ↑/↓: cmds · PgUp/PgDn: scroll"
+	helpText := m.selectedPort + " | ↑/↓: cmds · PgUp/PgDn: scroll"
 	if m.cmdHistIndex != len(m.cmdHist) {
 		helpText += " · ctrl+d: del"
 	}
 
-	footer := connectionText + footerStyle.Render(helpText)
+	footer := lipgloss.NewStyle().MaxWidth(m.inputTa.Width()).Render(connectionText + footerStyle.Render(helpText))
+
+	border := focusedBorderStyle.GetBorderStyle()
+
+	serialVpTitle := lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render(border.Top + border.MiddleRight + " Messages " + border.MiddleLeft)
+	histVpTitle := lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render(border.Top + border.MiddleRight + " Commands " + border.MiddleLeft)
+
+	// 3. Manually construct the top line of the border with the title inside.
+	// We calculate the number of "─" characters needed to fill the rest of the line.
+	serialVpTitleBar := lipgloss.JoinHorizontal(
+		lipgloss.Left,
+		lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render(border.TopLeft),
+		serialVpTitle,
+		lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render(strings.Repeat(border.Top, max(0, m.serialVp.Width-lipgloss.Width(serialVpTitle)+focusedBorderStyle.GetHorizontalPadding()))),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render(border.TopRight),
+	)
+
+	histVpTitleBar := lipgloss.JoinHorizontal(
+		lipgloss.Left,
+		lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render(border.TopLeft),
+		histVpTitle,
+		lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render(strings.Repeat(border.Top, max(0, m.histVp.Width-lipgloss.Width(histVpTitle)+focusedBorderStyle.GetHorizontalPadding()))),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render(border.TopRight),
+	)
+
+	// 4. Render the viewport content inside a box that has NO top border.
+	serialVpContent := focusedBorderStyle.Copy().
+		BorderTop(false).
+		Render(m.serialVp.View())
+
+	histVpContent := focusedBorderStyle.Copy().
+		BorderTop(false).
+		Render(m.histVp.View())
+
+	// 5. Join the title bar and the main content vertically.
+	serialViewportString := lipgloss.JoinVertical(lipgloss.Left, serialVpTitleBar, serialVpContent)
+
+	histViewportString := lipgloss.JoinVertical(lipgloss.Left, histVpTitleBar, histVpContent)
 
 	// Arrange viewports side by side
 	viewports := lipgloss.JoinHorizontal(
 		lipgloss.Top,
-		m.serialVp.View(),
-		m.histVp.View(),
+		serialViewportString,
+		histViewportString,
 	)
 
 	screen := lipgloss.JoinVertical(
