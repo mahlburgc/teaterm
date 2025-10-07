@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"context"
-	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -11,40 +10,27 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mahlburgc/teaterm/internal"
+
+	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/davecgh/go-spew/spew"
 
 	"go.bug.st/serial"
-	"go.bug.st/serial/enumerator"
 )
 
-type serialMsg string
-type errMsg error
-type portConnectedMsg serial.Port
-
-var (
-	cursorStyle             = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
-	connectSymbolStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("77"))
-	focusedPlaceholderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("245")) //99
-	focusedBorderStyle      = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("242"))
-	selectedCmdStyle        = cursorStyle
-	spinnerStyle            = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
-	vpTxMsgStyle            = cursorStyle
-	footerStyle             = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	focusedPromtStyle       = cursorStyle
-	blurredPromtStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	//selectedCmdStyle      = lipgloss.NewStyle().Background(lipgloss.Color("57")).Foreground(lipgloss.Color("230"))
+type (
+	serialMsg        string
+	errMsg           error
+	portConnectedMsg serial.Port
 )
 
 type model struct {
-	ready         bool
-	dump          io.Writer
 	serialVp      viewport.Model
-	histVp        viewport.Model
+	cmdVp         viewport.Model
 	serMessages   []string
 	inputTa       textarea.Model
 	err           error
@@ -62,55 +48,57 @@ type model struct {
 	spinner       spinner.Model
 }
 
-func initialModel(port serial.Port, showTimestamp bool, cmdHist []string, cmdHistFile string, dump io.Writer, selectedPort string, selectedMode *serial.Mode) model {
-	ta := textarea.New()
-	ta.Placeholder = "Send a message..."
-	ta.Focus()
-	ta.Prompt = "> "
-	ta.CharLimit = 256
-	ta.Cursor.Style = cursorStyle
-	ta.FocusedStyle.Placeholder = focusedPlaceholderStyle
-	ta.FocusedStyle.Prompt = focusedPromtStyle
-	ta.BlurredStyle.Prompt = blurredPromtStyle
-	ta.FocusedStyle.Base = focusedBorderStyle
-	ta.FocusedStyle.CursorLine = lipgloss.NewStyle() // Remove cursor line styling
-	ta.BlurredStyle.Base = focusedBorderStyle
-	ta.ShowLineNumbers = false
-	ta.SetWidth(30)
-	ta.SetHeight(1)
+func initialModel(port serial.Port, showTimestamp bool, cmdHist []string,
+	cmdHistFile string, selectedPort string, selectedMode *serial.Mode,
+) model {
+	// Command text area contains text field to send commands to the serial port
+	inputTa := textarea.New()
+	inputTa.SetWidth(30)
+	inputTa.SetHeight(1)
+	inputTa.Placeholder = "Send a message..."
+	inputTa.Focus()
+	inputTa.Prompt = "> "
+	inputTa.CharLimit = 256
+	inputTa.ShowLineNumbers = false
+	inputTa.KeyMap.InsertNewline.SetEnabled(false)
+	inputTa.Cursor.Style = internal.CursorStyle
+	inputTa.FocusedStyle.CursorLine = lipgloss.NewStyle()
+	inputTa.FocusedStyle.Placeholder = internal.FocusedPlaceholderStyle
+	inputTa.FocusedStyle.Prompt = internal.FocusedPromtStyle
+	inputTa.BlurredStyle.Prompt = internal.BlurredPromtStyle
+	inputTa.FocusedStyle.Base = internal.FocusedBorderStyle
+	inputTa.BlurredStyle.Base = internal.BlurredBorderStyle
 
-	// We want to create a viewport without border and later manually add the border to inject
-	// a title into the border
-	// Calculate the vertical and horizontal space taken by the border.
+	// Serial viewport contains all sent and received messages.
+	// We will create a viewport without border and later manually
+	// add the border to inject a title into the border.
 	serialVp := viewport.New(30, 5)
 	serialVp.SetContent(`Welcome to teaterm!`)
 	serialVp.Style = lipgloss.NewStyle()
-
-	histVp := viewport.New(30, 5)
-	histVp.Style = lipgloss.NewStyle()
-
 	// Disable the viewport's default up/down key handling so it doesn't scroll
-	// when we are navigating command history.
+	// when we are navigating through the command history.
 	serialVp.KeyMap.Up.SetEnabled(false)
 	serialVp.KeyMap.Down.SetEnabled(false)
-
-	ta.KeyMap.InsertNewline.SetEnabled(false) //TODO check
 	serialVp.KeyMap.PageUp.SetEnabled(false)
 	serialVp.KeyMap.PageDown.SetEnabled(false)
 
-	s := spinner.New()
-	s.Spinner = spinner.Dot
-	s.Style = spinnerStyle
+	// Command viewport contains the command history.
+	cmdVp := viewport.New(30, 5)
+	cmdVp.Style = lipgloss.NewStyle()
 
+	// Spinner symbol runs during port reconnect.
+	reconnectSpinner := spinner.New()
+	reconnectSpinner.Spinner = spinner.Dot
+	reconnectSpinner.Style = internal.SpinnerStyle
+
+	// Scanner searches for incomming serial messages
 	scanner := bufio.NewScanner(port)
 
 	return model{
-		ready:         false,
-		dump:          dump,
-		inputTa:       ta,
+		inputTa:       inputTa,
 		serMessages:   []string{},
 		serialVp:      serialVp,
-		histVp:        histVp,
+		cmdVp:         cmdVp,
 		err:           nil,
 		port:          port,
 		scanner:       scanner,
@@ -123,7 +111,7 @@ func initialModel(port serial.Port, showTimestamp bool, cmdHist []string, cmdHis
 		width:         0,
 		height:        0,
 		conStatus:     true,
-		spinner:       s,
+		spinner:       reconnectSpinner,
 	}
 }
 
@@ -132,14 +120,14 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case cursor.BlinkMsg:
+		// avoid logging on cursor blink
+	default:
+		log.Printf("Update Msg: Type: %T Value: %v\n", msg, msg)
+	}
 
-	// switch msg := msg.(type) {
-	// case cursor.BlinkMsg:
-	// 	//avoid print cursor blink
-	// default:
-	// 	spew.Fdump(m.dump, msg)
-	// }
-
+	// tea commands that should be executed after Update call
 	var cmds []tea.Cmd
 	var cmd tea.Cmd
 
@@ -157,19 +145,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		screenHight := msg.Height - 3
 
 		// Calculate the vertical and horizontal space taken by the border.
-		verticalMargin, horizontalMargin := focusedBorderStyle.GetFrameSize()
+		verticalMargin, horizontalMargin := internal.FocusedBorderStyle.GetFrameSize()
 
 		// The window has been resized, so update the viewport's dimensions.
 		m.serialVp.Width = screenWidth/4*3 - horizontalMargin
 		m.serialVp.Height = screenHight - m.inputTa.Height() - verticalMargin
 
-		//m.serialVp.Width = screenWidth / 4 * 3
-		m.histVp.Width = screenWidth - m.serialVp.Width - horizontalMargin
-		m.histVp.Height = m.serialVp.Height
+		// m.serialVp.Width = screenWidth / 4 * 3
+		m.cmdVp.Width = screenWidth - m.serialVp.Width - horizontalMargin
+		m.cmdVp.Height = m.serialVp.Height
 
 		m.inputTa.SetWidth(m.width)
 
-		//m.serialVp.Height = screenHight - m.inputTa.Height()
+		// m.serialVp.Height = screenHight - m.inputTa.Height()
 
 		if len(m.serMessages) > 0 {
 			m.serialVp.SetContent(lipgloss.NewStyle().Width(m.serialVp.Width).Render(strings.Join(m.serMessages, "\n")))
@@ -180,10 +168,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		historyContent := strings.Join(m.cmdHist, "\n")
-		m.histVp.SetContent(lipgloss.NewStyle().Width(m.histVp.Width).Render(historyContent))
+		m.cmdVp.SetContent(lipgloss.NewStyle().Width(m.cmdVp.Width).Render(historyContent))
 
 		if m.serialVp.Height > 0 {
-			m.histVp.GotoBottom()
+			m.cmdVp.GotoBottom()
 		}
 
 	case tea.KeyMsg:
@@ -204,7 +192,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			fileContent := strings.Join(m.cmdHist, "\n") + "\n"
 
-			err := os.WriteFile(m.cmdHistFile, []byte(fileContent), 0644)
+			err := os.WriteFile(m.cmdHistFile, []byte(fileContent), 0o644)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -220,7 +208,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// delete cmd from command history
 				m.cmdHist = append(m.cmdHist[:m.cmdHistIndex], m.cmdHist[m.cmdHistIndex+1:]...)
 				m.cmdHistIndex = len(m.cmdHist) // TODO create style for cmd history, remove duplicated code
-				m.histVp.SetContent(lipgloss.NewStyle().Width(m.histVp.Width).Render(strings.Join(m.cmdHist, "\n")))
+				m.cmdVp.SetContent(lipgloss.NewStyle().Width(m.cmdVp.Width).Render(strings.Join(m.cmdHist, "\n")))
 			}
 
 		case tea.KeyUp:
@@ -229,30 +217,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.inputTa.SetValue(m.cmdHist[m.cmdHistIndex])
 				m.inputTa.SetCursor(len(m.inputTa.Value()))
 
-				var cmdHistLines []string //TODO remove duplicated code
+				var cmdHistLines []string // TODO remove duplicated code
 				for i, cmd := range m.cmdHist {
 					if i == m.cmdHistIndex {
-						cmdHistLines = append(cmdHistLines, selectedCmdStyle.Render("> "+cmd))
+						cmdHistLines = append(cmdHistLines, internal.SelectedCmdStyle.Render("> "+cmd))
 					} else {
 						cmdHistLines = append(cmdHistLines, cmd)
 					}
 				}
-				spew.Fdump(m.dump, "cmd history len:", len(m.cmdHist))
-				spew.Fdump(m.dump, "history hight:", m.histVp.Height)
-				spew.Fdump(m.dump, "command index:", m.cmdHistIndex)
-				spew.Fdump(m.dump, "diff:", len(m.cmdHist)-m.histVp.Height)
-				if len(m.cmdHist) > m.histVp.Height {
-					spew.Fdump(m.dump, "here we are")
-					if m.cmdHistIndex <= len(m.cmdHist)-m.histVp.Height+1 {
-						spew.Fdump(m.dump, "now we are outside")
-						cmdHistLines = cmdHistLines[m.cmdHistIndex : m.cmdHistIndex+m.histVp.Height-2]
-						spew.Fdump(m.dump, cmdHistLines)
+
+				if len(m.cmdHist) > m.cmdVp.Height {
+					if m.cmdHistIndex <= len(m.cmdHist)-m.cmdVp.Height+1 {
+						cmdHistLines = cmdHistLines[m.cmdHistIndex : m.cmdHistIndex+m.cmdVp.Height-2]
 					}
 				}
 
 				cmdHistContent := strings.Join(cmdHistLines, "\n")
-				m.histVp.SetContent(lipgloss.NewStyle().Width(m.histVp.Width).Render(cmdHistContent))
-				m.histVp.GotoBottom()
+				m.cmdVp.SetContent(lipgloss.NewStyle().Width(m.cmdVp.Width).Render(cmdHistContent))
+				m.cmdVp.GotoBottom()
 			}
 
 		case tea.KeyDown:
@@ -262,37 +244,30 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.inputTa.SetValue(m.cmdHist[m.cmdHistIndex])
 					m.inputTa.SetCursor(len(m.inputTa.Value()))
 
-					var cmdHistLines []string //TODO remove duplicated code
+					var cmdHistLines []string // TODO remove duplicated code
 					for i, cmd := range m.cmdHist {
 						if i == m.cmdHistIndex {
-							cmdHistLines = append(cmdHistLines, selectedCmdStyle.Render("> "+cmd))
+							cmdHistLines = append(cmdHistLines, internal.SelectedCmdStyle.Render("> "+cmd))
 						} else {
 							cmdHistLines = append(cmdHistLines, cmd)
 						}
 					}
 
-					//TODO remove duplicated code
-					spew.Fdump(m.dump, "cmd history len:", len(m.cmdHist))
-					spew.Fdump(m.dump, "history hight:", m.histVp.Height)
-					spew.Fdump(m.dump, "command index:", m.cmdHistIndex)
-					spew.Fdump(m.dump, "diff:", len(m.cmdHist)-m.histVp.Height)
-					if len(m.cmdHist) > m.histVp.Height {
-						spew.Fdump(m.dump, "here we are")
-						if m.cmdHistIndex <= len(m.cmdHist)-m.histVp.Height+1 {
-							spew.Fdump(m.dump, "now we are outside")
-							cmdHistLines = cmdHistLines[m.cmdHistIndex : m.cmdHistIndex+m.histVp.Height-2]
-							spew.Fdump(m.dump, cmdHistLines)
+					// TODO remove duplicated code
+					if len(m.cmdHist) > m.cmdVp.Height {
+						if m.cmdHistIndex <= len(m.cmdHist)-m.cmdVp.Height+1 {
+							cmdHistLines = cmdHistLines[m.cmdHistIndex : m.cmdHistIndex+m.cmdVp.Height-2]
 						}
 					}
 
 					cmdHistContent := strings.Join(cmdHistLines, "\n")
-					m.histVp.SetContent(lipgloss.NewStyle().Width(m.histVp.Width).Render(cmdHistContent))
-					m.histVp.GotoBottom()
+					m.cmdVp.SetContent(lipgloss.NewStyle().Width(m.cmdVp.Width).Render(cmdHistContent))
+					m.cmdVp.GotoBottom()
 
 				} else {
 					// Cleared history, reset to empty
 					m.inputTa.Reset()
-					m.histVp.SetContent(lipgloss.NewStyle().Width(m.histVp.Width).Render(strings.Join(m.cmdHist, "\n")))
+					m.cmdVp.SetContent(lipgloss.NewStyle().Width(m.cmdVp.Width).Render(strings.Join(m.cmdHist, "\n")))
 				}
 			}
 		case tea.KeyEnter:
@@ -306,28 +281,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// duplicated commands in command history
 			foundIndex := -1
 			for i, cmd := range m.cmdHist {
-				spew.Fdump(m.dump, "%v, %s, %s\n", i, cmd, userInput)
 				if cmd == userInput {
-					spew.Sdump("found")
 					foundIndex = i
 					break
 				}
 			}
 
 			if foundIndex != -1 {
-				spew.Fdump(m.dump, m.cmdHist)
 				m.cmdHist = append(m.cmdHist[:foundIndex], m.cmdHist[foundIndex+1:]...)
-				spew.Fdump(m.dump, m.cmdHist)
 				m.cmdHist = append(m.cmdHist, userInput)
 			} else {
 				m.cmdHist = append(m.cmdHist, userInput)
 			}
 
 			// Send command from ta to serial port -> TODO should not be done in update routine
-			stringToSend := userInput + "\r\n" //TODO add custom Lineending
+			stringToSend := userInput + "\r\n" // TODO add custom Lineending
 			_, err := m.port.Write([]byte(stringToSend))
 			if err != nil {
-				spew.Fdump(m.dump, "write error:", err)
 				m.err = fmt.Errorf("error writing to serial port: %w", err)
 				return m, nil
 			}
@@ -342,7 +312,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			line.WriteString(userInput)
 
 			// TODO set serial message histrory limit, remove oldest if exceed
-			m.serMessages = append(m.serMessages, vpTxMsgStyle.Render(line.String())) // TODO directly use style for var()
+			m.serMessages = append(m.serMessages, internal.VpTxMsgStyle.Render(line.String())) // TODO directly use style for var()
 			m.serialVp.SetContent(strings.Join(m.serMessages, "\n"))
 			m.serialVp.GotoBottom()
 			m.inputTa.Reset()
@@ -350,10 +320,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Update command history viewport after sending a command
 			// TODO create method and use also in window size message
 			historyContent := strings.Join(m.cmdHist, "\n")
-			spew.Fdump(m.dump, "history list", m.cmdHist)
-			spew.Fdump(m.dump, "history content", historyContent)
-			m.histVp.SetContent(lipgloss.NewStyle().Width(m.histVp.Width).Render(historyContent))
-			m.histVp.GotoBottom()
+			m.cmdVp.SetContent(lipgloss.NewStyle().Width(m.cmdVp.Width).Render(historyContent))
+			m.cmdVp.GotoBottom()
 			m.cmdHistIndex = len(m.cmdHist)
 		}
 
@@ -388,7 +356,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case portConnectedMsg:
-		m.inputTa.Placeholder = "Send a message..." //TODO remove duplicated code
+		m.inputTa.Placeholder = "Send a message..." // TODO remove duplicated code
 		cmd = m.inputTa.Focus()
 		cmds = append(cmds, cmd)
 		m.conStatus = true
@@ -411,10 +379,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
-
 	var connectionText string
-	connectSymbol := connectSymbolStyle.Render("●")
-	//connectSymbol := connectSymbolStyle.Render("⇄")
+	connectSymbol := internal.ConnectSymbolStyle.Render("●")
 	if m.conStatus {
 		connectionText = fmt.Sprintf(" %s ", connectSymbol)
 	} else {
@@ -426,17 +392,20 @@ func (m model) View() string {
 		helpText += " · ctrl+d: del"
 	}
 
-	footer := lipgloss.NewStyle().MaxWidth(m.inputTa.Width()).Render(connectionText + footerStyle.Render(helpText))
+	footer := lipgloss.NewStyle().MaxWidth(m.inputTa.Width()).
+		Render(connectionText + internal.FooterStyle.Render(helpText))
 
-	border := focusedBorderStyle.GetBorderStyle()
+	border := internal.FocusedBorderStyle.GetBorderStyle()
 
-	serialVpTitle := lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render(border.Top + border.MiddleRight + " Messages " + border.MiddleLeft)
+	serialVpTitle := lipgloss.NewStyle().Foreground(lipgloss.Color("242")).
+		Render(border.Top + border.MiddleRight + " Messages " + border.MiddleLeft)
 	if lipgloss.Width(serialVpTitle) > m.serialVp.Width {
 		serialVpTitle = lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render("")
 	}
 
-	histVpTitle := lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render(border.Top + border.MiddleRight + " Commands " + border.MiddleLeft)
-	if lipgloss.Width(histVpTitle) > m.histVp.Width {
+	histVpTitle := lipgloss.NewStyle().Foreground(lipgloss.Color("242")).
+		Render(border.Top + border.MiddleRight + " Commands " + border.MiddleLeft)
+	if lipgloss.Width(histVpTitle) > m.cmdVp.Width {
 		histVpTitle = lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render("")
 	}
 
@@ -444,9 +413,12 @@ func (m model) View() string {
 	// We calculate the number of "─" characters needed to fill the rest of the line.
 	serialVpTitleBar := lipgloss.JoinHorizontal(
 		lipgloss.Left,
-		lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render(border.TopLeft),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("242")).
+			Render(border.TopLeft),
 		serialVpTitle,
-		lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render(strings.Repeat(border.Top, max(0, m.serialVp.Width-lipgloss.Width(serialVpTitle)+focusedBorderStyle.GetHorizontalPadding()))),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("242")).
+			Render(strings.Repeat(border.Top, max(0, m.serialVp.Width-lipgloss.
+				Width(serialVpTitle)+internal.FocusedBorderStyle.GetHorizontalPadding()))),
 		lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render(border.TopRight),
 	)
 
@@ -454,18 +426,20 @@ func (m model) View() string {
 		lipgloss.Left,
 		lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render(border.TopLeft),
 		histVpTitle,
-		lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render(strings.Repeat(border.Top, max(0, m.histVp.Width-lipgloss.Width(histVpTitle)+focusedBorderStyle.GetHorizontalPadding()))),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("242")).
+			Render(strings.Repeat(border.Top, max(0, m.cmdVp.Width-lipgloss.
+				Width(histVpTitle)+internal.FocusedBorderStyle.GetHorizontalPadding()))),
 		lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render(border.TopRight),
 	)
 
 	// 4. Render the viewport content inside a box that has NO top border.
-	serialVpContent := focusedBorderStyle.Copy().
+	serialVpContent := internal.FocusedBorderStyle.Copy().
 		BorderTop(false).
 		Render(m.serialVp.View())
 
-	histVpContent := focusedBorderStyle.Copy().
+	histVpContent := internal.FocusedBorderStyle.Copy().
 		BorderTop(false).
-		Render(m.histVp.View())
+		Render(m.cmdVp.View())
 
 	// 5. Join the title bar and the main content vertically.
 	serialViewportString := lipgloss.JoinVertical(lipgloss.Left, serialVpTitleBar, serialVpContent)
@@ -530,92 +504,27 @@ func readFromPort(scanner *bufio.Scanner) tea.Cmd {
 }
 
 func main() {
+	config := internal.GetConfig()
+	flags := internal.GetFlags()
 
-	var dump *os.File
-	if _, ok := os.LookupEnv("DEBUG"); ok {
-		var err error
-		dump, err = os.OpenFile("messages.log", os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
-		if err != nil {
-			os.Exit(1)
-		}
-	}
-
-	listPtr := flag.Bool("l", false, "list available ports")
-	portPtr := flag.String("p", "/dev/ttyUSB0", "serial port")
-	timestampPtr := flag.Bool("t", false, "show timestamp")
-
-	flag.Parse()
-
-	listFlag := *listPtr
-	showTimestamp := *timestampPtr
-
-	homedir, err := os.UserHomeDir()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	commandHistoryFilePath := homedir + "/.config/teaterm/"
-	commandHistoryFileName := "cmdhistroy.conf"
-	commandHistoryFile := commandHistoryFilePath + commandHistoryFileName
-
-	err = os.MkdirAll(commandHistoryFilePath, os.ModePerm)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	cmdhist, err := os.ReadFile(commandHistoryFile)
-	if err != nil {
-		if os.IsNotExist(err) {
-			cmdhist = nil
-		} else {
-			log.Fatal(err)
-		}
-	}
-
-	var cmdHistoryLines []string
-
-	if cmdhist != nil {
-		// Trim leading/trailing whitespace (including newlines)
-		trimmedContent := strings.TrimSpace(string(cmdhist))
-		// Split the string by the newline character
-		cmdHistoryLines = strings.Split(trimmedContent, "\n")
-	}
-
-	ports, err := enumerator.GetDetailedPortsList()
-	if err != nil {
-		log.Fatal(err)
-	}
-	if len(ports) == 0 {
-		fmt.Println("No serial ports found!")
+	if flags.List {
+		internal.ListPorts()
 		return
 	}
 
-	if listFlag {
-		for _, port := range ports {
-			fmt.Printf("Found port: %s\n", port.Name)
-			if port.IsUSB {
-				fmt.Printf("   USB ID     %s:%s\n", port.VID, port.PID)
-				fmt.Printf("   USB serial %s\n", port.SerialNumber)
-			}
-		}
-		return
-	}
-
-	mode := &serial.Mode{
-		BaudRate: 115200,
-	}
-	port, err := serial.Open(*portPtr, mode)
-	if err != nil {
-		log.Fatal(err)
-	}
-
+	port, mode := internal.OpenPort(flags.Port)
 	defer port.Close()
 
-	m := initialModel(port, showTimestamp, cmdHistoryLines, commandHistoryFile, dump, *portPtr, mode)
+	m := initialModel(port, flags.Timestamp, config.CmdHistoryLines, config.CmdHistFile, flags.Port, &mode)
 	p := tea.NewProgram(m, tea.WithAltScreen())
+
+	logger := internal.StartLogger("teaterm_debug.log")
+	if logger != nil {
+		defer logger.Close()
+	}
 
 	if _, err := p.Run(); err != nil {
 		log.Fatal(err)
 	}
-	//fmt.Printf("Command history saved under %s!\n", commandHistoryFile)
+	log.Printf("Command history saved under %s!\n", config.CmdHistFile)
 }
