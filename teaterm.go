@@ -431,7 +431,14 @@ func (m model) View() string {
 	border := focusedBorderStyle.GetBorderStyle()
 
 	serialVpTitle := lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render(border.Top + border.MiddleRight + " Messages " + border.MiddleLeft)
+	if lipgloss.Width(serialVpTitle) > m.serialVp.Width {
+		serialVpTitle = lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render("")
+	}
+
 	histVpTitle := lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render(border.Top + border.MiddleRight + " Commands " + border.MiddleLeft)
+	if lipgloss.Width(histVpTitle) > m.histVp.Width {
+		histVpTitle = lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render("")
+	}
 
 	// 3. Manually construct the top line of the border with the title inside.
 	// We calculate the number of "─" characters needed to fill the rest of the line.
