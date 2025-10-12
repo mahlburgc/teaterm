@@ -15,8 +15,12 @@ import (
 
 type (
 	SerialRxMsg      string
-	PortConnectedMsg struct{ port serial.Port }
+	PortConnectedMsg struct{ port Port }
 )
+
+// Port is an interface that matches io.ReadWriteCloser.
+// Both serial.Port and our mockPort implement this.
+type Port io.ReadWriteCloser
 
 func ListPorts() {
 	ports, err := enumerator.GetDetailedPortsList()
@@ -38,7 +42,7 @@ func ListPorts() {
 	}
 }
 
-func OpenPort(portname string) (serial.Port, serial.Mode) {
+func OpenPort(portname string) (Port, serial.Mode) {
 	mode := serial.Mode{
 		BaudRate: 115200, // TODO make configurable
 	}

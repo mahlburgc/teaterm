@@ -1,7 +1,11 @@
 package main
 
 import (
+	"io"
+	"os"
+
 	"github.com/mahlburgc/teaterm/internal"
+	"go.bug.st/serial"
 )
 
 func main() {
@@ -13,7 +17,15 @@ func main() {
 		return
 	}
 
-	port, mode := internal.OpenPort(flags.Port)
+	var port io.ReadWriteCloser
+	var mode serial.Mode
+
+	if len(os.Getenv("DEBUG_TEATERM")) > 0 {
+		port, mode = internal.OpenFakePort()
+	} else {
+		port, mode = internal.OpenPort(flags.Port)
+	}
+
 	defer port.Close()
 
 	logger := internal.StartLogger("teaterm_debug.log")

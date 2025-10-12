@@ -21,7 +21,7 @@ type model struct {
 	inputTa       textarea.Model
 	serMsg        []string
 	err           error
-	port          serial.Port
+	port          Port
 	scanner       *bufio.Scanner
 	selectedPort  string
 	selectedMode  *serial.Mode
@@ -35,7 +35,7 @@ type model struct {
 	spinner       spinner.Model
 }
 
-func initialModel(port serial.Port, showTimestamp bool, cmdHist []string,
+func initialModel(port Port, showTimestamp bool, cmdHist []string,
 	selectedPort string, selectedMode *serial.Mode,
 ) model {
 	// Command text area contains text field to send commands to the serial port
@@ -310,7 +310,7 @@ func UpdateWindowSize(m model, msg tea.WindowSizeMsg) {
 	}
 }
 
-func RunTui(port serial.Port, mode serial.Mode, flags Flags, config Config) {
+func RunTui(port Port, mode serial.Mode, flags Flags, config Config) {
 	m := initialModel(port, flags.Timestamp, config.CmdHistoryLines, flags.Port, &mode)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 
