@@ -15,6 +15,7 @@ import (
 
 type (
 	SerialRxMsg      string
+	SerialTxMsg      string
 	PortConnectedMsg struct{ port Port }
 )
 
@@ -88,5 +89,18 @@ func readFromPort(scanner *bufio.Scanner) tea.Cmd {
 			}
 		}
 		return nil
+	}
+}
+
+func SendToPort(port Port, msg string) tea.Cmd {
+	return func() tea.Msg {
+		stringToSend := msg + "\r\n" // TODO add custom Lineending
+		_, err := port.Write([]byte(stringToSend))
+		if err != nil {
+			return ErrMsg{
+				err: err,
+			}
+		}
+		return SerialTxMsg(msg)
 	}
 }

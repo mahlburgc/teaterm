@@ -27,7 +27,6 @@ type model struct {
 	selectedMode  *serial.Mode
 	showTimestamp bool
 	cmdHist       []string
-	cmdHistFile   string
 	cmdHistIndex  int
 	width         int
 	height        int
@@ -111,12 +110,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	LogMsgType(msg)
 
+	m.inputTa, cmd = m.inputTa.Update(msg)
+	cmds = append(cmds, cmd)
+	m.serialVp, cmd = m.serialVp.Update(msg)
+	cmds = append(cmds, cmd)
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		UpdateWindowSize(m, msg)
+		UpdateWindowSize(&m, msg)
 
 	case tea.KeyMsg:
-		UpdateKeys(&m, msg)
+		cmd = UpdateKeys(&m, msg)
+		cmds = append(cmds, cmd)
+
+	case SerialTxMsg:
+		AddMsgToMsgVp(&m, string(msg))
 
 	case SerialRxMsg:
 		cmd = readFromPort(m.scanner)
@@ -167,11 +175,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, cmd)
 		}
 	}
-
-	m.inputTa, cmd = m.inputTa.Update(msg)
-	cmds = append(cmds, cmd)
-	m.serialVp, cmd = m.serialVp.Update(msg)
-	cmds = append(cmds, cmd)
 
 	return m, tea.Batch(cmds...)
 }
@@ -272,7 +275,7 @@ func (m model) View() string {
 	)
 }
 
-func UpdateWindowSize(m model, msg tea.WindowSizeMsg) {
+func UpdateWindowSize(m *model, msg tea.WindowSizeMsg) {
 	m.width = msg.Width
 	m.height = msg.Height
 
@@ -308,6 +311,22 @@ func UpdateWindowSize(m model, msg tea.WindowSizeMsg) {
 	if m.serialVp.Height > 0 {
 		m.cmdVp.GotoBottom()
 	}
+}
+
+func AddMsgToMsgVp(m *model, msg string) {
+	// Log the sent message to the viewport
+	var line strings.Builder
+	if m.showTimestamp {
+		t := time.Now().Format("15:04:05.000")
+		line.WriteString(fmt.Sprintf("[%s] ", t))
+	}
+	// line.WriteString("> ")
+	line.WriteString(msg)
+
+	// TODO set serial message histrory limit, remove oldest if exceed
+	m.serMsg = append(m.serMsg, VpTxMsgStyle.Render(line.String())) // TODO directly use style for var()
+	m.serialVp.SetContent(strings.Join(m.serMsg, "\n"))
+	m.serialVp.GotoBottom()
 }
 
 func RunTui(port Port, mode serial.Mode, flags Flags, config Config) {
