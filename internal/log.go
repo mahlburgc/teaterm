@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/charmbracelet/bubbles/cursor"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -23,4 +24,15 @@ func StartLogger(logfile string) *os.File {
 	}
 
 	return nil
+}
+
+// Log messsage type to debug file
+// TBD: move this to tea command too
+func LogMsgType(msg any) {
+	switch msg := msg.(type) {
+	case cursor.BlinkMsg:
+		// avoid logging on cursor blink messages
+	default:
+		log.Printf("Update Msg: Type: %T Value: %v\n", msg, msg)
+	}
 }
