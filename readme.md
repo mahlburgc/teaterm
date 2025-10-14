@@ -29,6 +29,11 @@ go install github.com/mahlburgc/teaterm@latest
 - timestamp
 - log to file
 
+## Next steps
+- further cleanup tui.go
+- improve window resizing
+- fix window resize panic
+
 ## Useful Resources
 - https://leg100.github.io/en/posts/building-bubbletea-programs/
 - https://github.com/lrstanley/bubblezone

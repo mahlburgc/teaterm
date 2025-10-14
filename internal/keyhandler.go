@@ -1,15 +1,14 @@
 package internal
 
 import (
-	"log"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
-func UpdateKeys(m *model, key tea.KeyMsg) tea.Cmd {
-	log.Println("test")
+// Handle all key events in the bubbletea update loop.
+func HandleKeys(m *model, key tea.KeyMsg) tea.Cmd {
 	switch key.String() {
 	case "alt+m":
 		// nothing to do for now
@@ -120,18 +119,21 @@ func updateCmdHistView(m *model) {
 	// 	}
 	// }
 
-	m.cmdVp.SetContent(lipgloss.NewStyle().Width(m.cmdVp.Width).Render(strings.Join(cmdHistLines, "\n")))
+	m.cmdVp.SetContent(lipgloss.NewStyle().Width(m.cmdVp.Width).
+		Render(strings.Join(cmdHistLines, "\n")))
 }
 
+// Handle enter key. The enter key sends the message in the input
+// text area to the serial port and stores the command in the command history.
 func handleEnterKey(m *model) tea.Cmd {
 	userInput := m.inputTa.Value()
 	if userInput == "" {
 		return nil
 	}
 
-	// Add command to history
-	// if command is already found in the command histroy, just move command to end to avoid
-	// duplicated commands in command history
+	// Add command to history.
+	// If command is already found in the command histroy, just move command to end to avoid
+	// duplicated commands.
 	foundIndex := -1
 	for i, cmd := range m.cmdHist {
 		if cmd == userInput {
@@ -147,11 +149,10 @@ func handleEnterKey(m *model) tea.Cmd {
 		m.cmdHist = append(m.cmdHist, userInput)
 	}
 
+	// Reset command history viewport and input text area after sending a command.
 	m.inputTa.Reset()
-
-	// Update command history viewport after sending a command
-	// TODO create method and use also in window size message
-	m.cmdVp.SetContent(lipgloss.NewStyle().Width(m.cmdVp.Width).Render(strings.Join(m.cmdHist, "\n")))
+	m.cmdVp.SetContent(lipgloss.NewStyle().Width(m.cmdVp.Width).
+		Render(strings.Join(m.cmdHist, "\n")))
 	m.cmdVp.GotoBottom()
 	m.cmdHistIndex = len(m.cmdHist)
 

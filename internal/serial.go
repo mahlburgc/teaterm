@@ -20,9 +20,12 @@ type (
 )
 
 // Port is an interface that matches io.ReadWriteCloser.
-// Both serial.Port and our mockPort implement this.
+// This interface is used to utilize either a real serial port
+// of a mocked serial port for development.
+// Both serial.Port and our mockPort implement this interface.
 type Port io.ReadWriteCloser
 
+// Print out a list of all available ports.
 func ListPorts() {
 	ports, err := enumerator.GetDetailedPortsList()
 	if err != nil {
@@ -43,6 +46,7 @@ func ListPorts() {
 	}
 }
 
+// Open a port and return the port and the serial mode.
 func OpenPort(portname string) (Port, serial.Mode) {
 	mode := serial.Mode{
 		BaudRate: 115200, // TODO make configurable
@@ -54,8 +58,8 @@ func OpenPort(portname string) (Port, serial.Mode) {
 	return port, mode
 }
 
-// try to reconnect to the serial port we connected on startup
-func reconnectPort(selectedPort string, selectedMode *serial.Mode) tea.Cmd {
+// Try to reconnect to the serial port we connected to on startup.
+func reconnectToPort(selectedPort string, selectedMode *serial.Mode) tea.Cmd {
 	return func() tea.Msg {
 		var port serial.Port
 		var err error
@@ -74,6 +78,8 @@ func reconnectPort(selectedPort string, selectedMode *serial.Mode) tea.Cmd {
 	}
 }
 
+// Returns a Tea command to scan for a new receive message on the serial port.
+// The tea command returns the received message or error, if occured.
 func readFromPort(scanner *bufio.Scanner) tea.Cmd {
 	return func() tea.Msg {
 		for scanner.Scan() {
@@ -92,6 +98,8 @@ func readFromPort(scanner *bufio.Scanner) tea.Cmd {
 	}
 }
 
+// Returns a Tea command to send a message string to the serial port.
+// The tea command returns the transmitted message or error, if occured.
 func SendToPort(port Port, msg string) tea.Cmd {
 	return func() tea.Msg {
 		stringToSend := msg + "\r\n" // TODO add custom Lineending

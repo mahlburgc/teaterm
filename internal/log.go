@@ -10,7 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// Opens (or create if no exist) a log file for debug logging.
+// Open (or create if no exist) a log file for debug logging.
 func StartLogger(logfile string) *os.File {
 	if len(os.Getenv("DEBUG_TEATERM")) > 0 {
 		logfile, err := tea.LogToFile("debug.log", "debug")
@@ -27,7 +27,6 @@ func StartLogger(logfile string) *os.File {
 }
 
 // Log messsage type to debug file
-// TBD: move this to tea command too
 func LogMsgType(msg any) {
 	switch msg := msg.(type) {
 	case cursor.BlinkMsg:

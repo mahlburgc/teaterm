@@ -37,7 +37,7 @@ type model struct {
 func initialModel(port Port, showTimestamp bool, cmdHist []string,
 	selectedPort string, selectedMode *serial.Mode,
 ) model {
-	// Command text area contains text field to send commands to the serial port
+	// Input text area contains text field to send commands to the serial port.
 	inputTa := textarea.New()
 	inputTa.SetWidth(30)
 	inputTa.SetHeight(1)
@@ -117,54 +117,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		UpdateWindowSize(&m, msg)
+		HandleNewWindowSize(&m, msg)
 
 	case tea.KeyMsg:
-		cmd = UpdateKeys(&m, msg)
+		cmd = HandleKeys(&m, msg)
 		cmds = append(cmds, cmd)
 
 	case SerialTxMsg:
-		AddMsgToMsgVp(&m, string(msg))
+		HandleSerialTxMsg(&m, string(msg))
 
 	case SerialRxMsg:
-		cmd = readFromPort(m.scanner)
+		cmd = HandleSerialRxMsg(&m, string(msg))
 		cmds = append(cmds, cmd)
-		var line strings.Builder
-		if m.showTimestamp {
-			t := time.Now().Format("15:04:05.000")
-			line.WriteString(fmt.Sprintf("[%s] ", t))
-		}
-		//line.WriteString("< ")
-		line.WriteString(string(msg))
-
-		// TODO set serial message histrory limit, remove oldest if exceed
-		m.serMsg = append(m.serMsg, line.String())
-		m.serialVp.SetContent(lipgloss.NewStyle().Width(m.serialVp.Width).Render(strings.Join(m.serMsg, "\n")))
-		m.serialVp.GotoBottom()
 
 	case *serial.PortError:
-		switch msg.Code() {
-		case serial.PortClosed:
-			m.inputTa.Reset()
-			m.inputTa.Blur()
-			m.conStatus = false
-			m.port.Close()
-			m.inputTa.Placeholder = "Reconnecting..."
-			cmd = reconnectPort(m.selectedPort, m.selectedMode)
-			cmds = append(cmds, cmd)
-			cmd = m.spinner.Tick
-			cmds = append(cmds, cmd)
-		}
+		reconnectCmd, spinnerCmd := HandleSerialPortErr(&m, msg)
+		cmds = append(cmds, reconnectCmd, spinnerCmd)
 
 	case PortConnectedMsg:
-		m.inputTa.Placeholder = "Send a message..." // TODO remove duplicated code
-		cmd = m.inputTa.Focus()
-		cmds = append(cmds, cmd)
-		m.conStatus = true
-		m.port = msg.port
-		m.scanner = bufio.NewScanner(m.port)
-		cmd = readFromPort(m.scanner)
-		cmds = append(cmds, cmd)
+		HandlePortReconnect(&m, msg.port)
 
 	case ErrMsg:
 		m.err = msg.err
@@ -185,78 +156,16 @@ func (m model) View() string {
 		return fmt.Sprintf("\nWe had some trouble: %v\n\n", m.err)
 	}
 
-	var connectionText string
-	connectSymbol := ConnectSymbolStyle.Render("●")
-	if m.conStatus {
-		connectionText = fmt.Sprintf(" %s ", connectSymbol)
-	} else {
-		connectionText = fmt.Sprintf(" %s", m.spinner.View())
-	}
+	footer := CreateFooter(&m)
 
-	helpText := m.selectedPort + " | ↑/↓: cmds · PgUp/PgDn: scroll"
-	if m.cmdHistIndex != len(m.cmdHist) {
-		helpText += " · ctrl+d: del"
-	}
-
-	footer := lipgloss.NewStyle().MaxWidth(m.inputTa.Width()).
-		Render(connectionText + FooterStyle.Render(helpText))
-
-	border := FocusedBorderStyle.GetBorderStyle()
-
-	serialVpTitle := lipgloss.NewStyle().Foreground(lipgloss.Color("242")).
-		Render(border.Top + border.MiddleRight + " Messages " + border.MiddleLeft)
-	if lipgloss.Width(serialVpTitle) > m.serialVp.Width {
-		serialVpTitle = lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render("")
-	}
-
-	histVpTitle := lipgloss.NewStyle().Foreground(lipgloss.Color("242")).
-		Render(border.Top + border.MiddleRight + " Commands " + border.MiddleLeft)
-	if lipgloss.Width(histVpTitle) > m.cmdVp.Width {
-		histVpTitle = lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render("")
-	}
-
-	// 3. Manually construct the top line of the border with the title inside.
-	// We calculate the number of "─" characters needed to fill the rest of the line.
-	serialVpTitleBar := lipgloss.JoinHorizontal(
-		lipgloss.Left,
-		lipgloss.NewStyle().Foreground(lipgloss.Color("242")).
-			Render(border.TopLeft),
-		serialVpTitle,
-		lipgloss.NewStyle().Foreground(lipgloss.Color("242")).
-			Render(strings.Repeat(border.Top, max(0, m.serialVp.Width-lipgloss.
-				Width(serialVpTitle)+FocusedBorderStyle.GetHorizontalPadding()))),
-		lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render(border.TopRight),
-	)
-
-	histVpTitleBar := lipgloss.JoinHorizontal(
-		lipgloss.Left,
-		lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render(border.TopLeft),
-		histVpTitle,
-		lipgloss.NewStyle().Foreground(lipgloss.Color("242")).
-			Render(strings.Repeat(border.Top, max(0, m.cmdVp.Width-lipgloss.
-				Width(histVpTitle)+FocusedBorderStyle.GetHorizontalPadding()))),
-		lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render(border.TopRight),
-	)
-
-	// 4. Render the viewport content inside a box that has NO top border.
-	serialVpContent := FocusedBorderStyle.Copy().
-		BorderTop(false).
-		Render(m.serialVp.View())
-
-	histVpContent := FocusedBorderStyle.Copy().
-		BorderTop(false).
-		Render(m.cmdVp.View())
-
-	// 5. Join the title bar and the main content vertically.
-	serialViewportString := lipgloss.JoinVertical(lipgloss.Left, serialVpTitleBar, serialVpContent)
-
-	histViewportString := lipgloss.JoinVertical(lipgloss.Left, histVpTitleBar, histVpContent)
+	serialVp := AddBorderAndTitle(m.serialVp, "Messages")
+	cmdVp := AddBorderAndTitle(m.cmdVp, "Commands")
 
 	// Arrange viewports side by side
 	viewports := lipgloss.JoinHorizontal(
 		lipgloss.Top,
-		serialViewportString,
-		histViewportString,
+		serialVp,
+		cmdVp,
 	)
 
 	screen := lipgloss.JoinVertical(
@@ -275,7 +184,56 @@ func (m model) View() string {
 	)
 }
 
-func UpdateWindowSize(m *model, msg tea.WindowSizeMsg) {
+// Adds a border with title to viewport and returns viewport string.
+func AddBorderAndTitle(vp viewport.Model, title string) string {
+	border := FocusedBorderStyle.GetBorderStyle()
+
+	vpTitle := lipgloss.NewStyle().Foreground(lipgloss.Color("242")).
+		Render(border.Top + border.MiddleRight + " " + title + " " + border.MiddleLeft)
+
+	// Remove title if width is too low
+	if lipgloss.Width(vpTitle) > vp.Width {
+		vpTitle = lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render("")
+	}
+
+	// Manually construct the top line of the border with the title inside.
+	// We calculate the number of "─" characters needed to fill the rest of the line.
+	serialVpTitleBar := lipgloss.JoinHorizontal(
+		lipgloss.Left,
+		lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render(border.TopLeft),
+		vpTitle,
+		lipgloss.NewStyle().Foreground(lipgloss.Color("242")).
+			Render(strings.Repeat(border.Top, max(0, vp.Width-lipgloss.
+				Width(vpTitle)+FocusedBorderStyle.GetHorizontalPadding()))),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render(border.TopRight),
+	)
+
+	// Render the viewport content inside a box that has NO top border.
+	vpBody := FocusedBorderStyle.BorderTop(false).Render(vp.View())
+
+	// Join the title bar and the main content vertically.
+	return lipgloss.JoinVertical(lipgloss.Left, serialVpTitleBar, vpBody)
+}
+
+// Returns the footer string
+func CreateFooter(m *model) string {
+	var connectionStatus string
+	if m.conStatus {
+		connectionStatus = fmt.Sprintf(" %s ", ConnectSymbolStyle.Render("●"))
+	} else {
+		connectionStatus = fmt.Sprintf(" %s", m.spinner.View())
+	}
+
+	helpText := m.selectedPort + " | ↑/↓: cmds · PgUp/PgDn: scroll"
+	if m.cmdHistIndex != len(m.cmdHist) {
+		helpText += " · ctrl+d: del"
+	}
+
+	return lipgloss.NewStyle().MaxWidth(m.inputTa.Width()). // TODO check width
+								Render(connectionStatus + FooterStyle.Render(helpText))
+}
+
+func HandleNewWindowSize(m *model, msg tea.WindowSizeMsg) {
 	m.width = msg.Width
 	m.height = msg.Height
 
@@ -313,7 +271,28 @@ func UpdateWindowSize(m *model, msg tea.WindowSizeMsg) {
 	}
 }
 
-func AddMsgToMsgVp(m *model, msg string) {
+// Handle incomming serial messages.
+func HandleSerialRxMsg(m *model, msg string) tea.Cmd {
+	var line strings.Builder
+
+	if m.showTimestamp {
+		t := time.Now().Format("15:04:05.000")
+		line.WriteString(fmt.Sprintf("[%s] ", t))
+	}
+	//line.WriteString("< ")
+	line.WriteString(string(msg))
+
+	// TODO set serial message histrory limit, remove oldest if exceed
+	m.serMsg = append(m.serMsg, line.String())
+	m.serialVp.SetContent(lipgloss.NewStyle().Width(m.serialVp.Width).
+		Render(strings.Join(m.serMsg, "\n")))
+	m.serialVp.GotoBottom()
+
+	// restart msg scanner
+	return readFromPort(m.scanner)
+}
+
+func HandleSerialTxMsg(m *model, msg string) {
 	// Log the sent message to the viewport
 	var line strings.Builder
 	if m.showTimestamp {
@@ -327,6 +306,36 @@ func AddMsgToMsgVp(m *model, msg string) {
 	m.serMsg = append(m.serMsg, VpTxMsgStyle.Render(line.String())) // TODO directly use style for var()
 	m.serialVp.SetContent(strings.Join(m.serMsg, "\n"))
 	m.serialVp.GotoBottom()
+}
+
+// Handle serial port errors.
+// If serial port was closed for any reason, start trying to reconnect to the port
+// and start the reconnect spinner symbol.
+func HandleSerialPortErr(m *model, msg *serial.PortError) (tea.Cmd, tea.Cmd) {
+	if msg.Code() == serial.PortClosed {
+		m.inputTa.Reset()
+		m.inputTa.Blur()
+		m.conStatus = false
+		m.port.Close()
+		m.inputTa.Placeholder = "Reconnecting..."
+		reconnectCmd := reconnectToPort(m.selectedPort, m.selectedMode)
+		spinnerCmd := m.spinner.Tick
+
+		return reconnectCmd, spinnerCmd
+	}
+	return nil, nil
+}
+
+// Handle port reconnected event.
+func HandlePortReconnect(m *model, port Port) (tea.Cmd, tea.Cmd) {
+	m.inputTa.Placeholder = "Send a message..." // TODO remove duplicated code
+	cursorBlinkCmd := m.inputTa.Focus()
+	m.conStatus = true
+	m.port = port
+	m.scanner = bufio.NewScanner(m.port)
+	readCmd := readFromPort(m.scanner)
+
+	return cursorBlinkCmd, readCmd
 }
 
 func RunTui(port Port, mode serial.Mode, flags Flags, config Config) {
