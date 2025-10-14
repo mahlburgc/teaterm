@@ -135,14 +135,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, reconnectCmd, spinnerCmd)
 
 	case PortConnectedMsg:
-		m.inputTa.Placeholder = "Send a message..." // TODO remove duplicated code
-		cmd = m.inputTa.Focus()
-		cmds = append(cmds, cmd)
-		m.conStatus = true
-		m.port = msg.port
-		m.scanner = bufio.NewScanner(m.port)
-		cmd = readFromPort(m.scanner)
-		cmds = append(cmds, cmd)
+		HandlePortReconnect(&m, msg.port)
 
 	case ErrMsg:
 		m.err = msg.err
@@ -296,7 +289,7 @@ func HandleSerialRxMsg(m *model, msg string) tea.Cmd {
 	var line strings.Builder
 
 	if m.showTimestamp {
-		t := time.Now().Format("15:15:15.000")
+		t := time.Now().Format("15:04:05.000")
 		line.WriteString(fmt.Sprintf("[%s] ", t))
 	}
 	//line.WriteString("< ")
@@ -344,6 +337,18 @@ func HandleSerialPortErr(m *model, msg *serial.PortError) (tea.Cmd, tea.Cmd) {
 		return reconnectCmd, spinnerCmd
 	}
 	return nil, nil
+}
+
+// Handle port reconnected event.
+func HandlePortReconnect(m *model, port Port) (tea.Cmd, tea.Cmd) {
+	m.inputTa.Placeholder = "Send a message..." // TODO remove duplicated code
+	cursorBlinkCmd := m.inputTa.Focus()
+	m.conStatus = true
+	m.port = port
+	m.scanner = bufio.NewScanner(m.port)
+	readCmd := readFromPort(m.scanner)
+
+	return cursorBlinkCmd, readCmd
 }
 
 func RunTui(port Port, mode serial.Mode, flags Flags, config Config) {
