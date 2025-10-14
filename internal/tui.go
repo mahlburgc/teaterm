@@ -37,7 +37,7 @@ type model struct {
 func initialModel(port Port, showTimestamp bool, cmdHist []string,
 	selectedPort string, selectedMode *serial.Mode,
 ) model {
-	// Command text area contains text field to send commands to the serial port
+	// Input text area contains text field to send commands to the serial port.
 	inputTa := textarea.New()
 	inputTa.SetWidth(30)
 	inputTa.SetHeight(1)
@@ -117,44 +117,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		UpdateWindowSize(&m, msg)
+		HandleNewWindowSize(&m, msg)
 
 	case tea.KeyMsg:
-		cmd = UpdateKeys(&m, msg)
+		cmd = HandleKeys(&m, msg)
 		cmds = append(cmds, cmd)
 
 	case SerialTxMsg:
-		AddMsgToMsgVp(&m, string(msg))
+		HandleSerialTxMsg(&m, string(msg))
 
 	case SerialRxMsg:
-		cmd = readFromPort(m.scanner)
+		cmd = HandleSerialRxMsg(&m, string(msg))
 		cmds = append(cmds, cmd)
-		var line strings.Builder
-		if m.showTimestamp {
-			t := time.Now().Format("15:04:05.000")
-			line.WriteString(fmt.Sprintf("[%s] ", t))
-		}
-		//line.WriteString("< ")
-		line.WriteString(string(msg))
-
-		// TODO set serial message histrory limit, remove oldest if exceed
-		m.serMsg = append(m.serMsg, line.String())
-		m.serialVp.SetContent(lipgloss.NewStyle().Width(m.serialVp.Width).Render(strings.Join(m.serMsg, "\n")))
-		m.serialVp.GotoBottom()
 
 	case *serial.PortError:
-		switch msg.Code() {
-		case serial.PortClosed:
-			m.inputTa.Reset()
-			m.inputTa.Blur()
-			m.conStatus = false
-			m.port.Close()
-			m.inputTa.Placeholder = "Reconnecting..."
-			cmd = reconnectPort(m.selectedPort, m.selectedMode)
-			cmds = append(cmds, cmd)
-			cmd = m.spinner.Tick
-			cmds = append(cmds, cmd)
-		}
+		reconnectCmd, spinnerCmd := HandleSerialPortErr(&m, msg)
+		cmds = append(cmds, reconnectCmd, spinnerCmd)
 
 	case PortConnectedMsg:
 		m.inputTa.Placeholder = "Send a message..." // TODO remove duplicated code
@@ -275,7 +253,7 @@ func (m model) View() string {
 	)
 }
 
-func UpdateWindowSize(m *model, msg tea.WindowSizeMsg) {
+func HandleNewWindowSize(m *model, msg tea.WindowSizeMsg) {
 	m.width = msg.Width
 	m.height = msg.Height
 
@@ -313,7 +291,28 @@ func UpdateWindowSize(m *model, msg tea.WindowSizeMsg) {
 	}
 }
 
-func AddMsgToMsgVp(m *model, msg string) {
+// Handle incomming serial messages.
+func HandleSerialRxMsg(m *model, msg string) tea.Cmd {
+	var line strings.Builder
+
+	if m.showTimestamp {
+		t := time.Now().Format("15:15:15.000")
+		line.WriteString(fmt.Sprintf("[%s] ", t))
+	}
+	//line.WriteString("< ")
+	line.WriteString(string(msg))
+
+	// TODO set serial message histrory limit, remove oldest if exceed
+	m.serMsg = append(m.serMsg, line.String())
+	m.serialVp.SetContent(lipgloss.NewStyle().Width(m.serialVp.Width).
+		Render(strings.Join(m.serMsg, "\n")))
+	m.serialVp.GotoBottom()
+
+	// restart msg scanner
+	return readFromPort(m.scanner)
+}
+
+func HandleSerialTxMsg(m *model, msg string) {
 	// Log the sent message to the viewport
 	var line strings.Builder
 	if m.showTimestamp {
@@ -327,6 +326,24 @@ func AddMsgToMsgVp(m *model, msg string) {
 	m.serMsg = append(m.serMsg, VpTxMsgStyle.Render(line.String())) // TODO directly use style for var()
 	m.serialVp.SetContent(strings.Join(m.serMsg, "\n"))
 	m.serialVp.GotoBottom()
+}
+
+// Handle serial port errors.
+// If serial port was closed for any reason, start trying to reconnect to the port
+// and start the reconnect spinner symbol.
+func HandleSerialPortErr(m *model, msg *serial.PortError) (tea.Cmd, tea.Cmd) {
+	if msg.Code() == serial.PortClosed {
+		m.inputTa.Reset()
+		m.inputTa.Blur()
+		m.conStatus = false
+		m.port.Close()
+		m.inputTa.Placeholder = "Reconnecting..."
+		reconnectCmd := reconnectToPort(m.selectedPort, m.selectedMode)
+		spinnerCmd := m.spinner.Tick
+
+		return reconnectCmd, spinnerCmd
+	}
+	return nil, nil
 }
 
 func RunTui(port Port, mode serial.Mode, flags Flags, config Config) {

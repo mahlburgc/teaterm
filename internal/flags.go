@@ -8,6 +8,7 @@ type Flags struct {
 	Timestamp bool
 }
 
+// Get all command line arguments.
 func GetFlags() Flags {
 	listArg := flag.Bool("l", false, "list available ports")
 	portArg := flag.String("p", "/dev/ttyUSB0", "serial port")
