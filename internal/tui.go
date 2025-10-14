@@ -156,78 +156,16 @@ func (m model) View() string {
 		return fmt.Sprintf("\nWe had some trouble: %v\n\n", m.err)
 	}
 
-	var connectionText string
-	connectSymbol := ConnectSymbolStyle.Render("●")
-	if m.conStatus {
-		connectionText = fmt.Sprintf(" %s ", connectSymbol)
-	} else {
-		connectionText = fmt.Sprintf(" %s", m.spinner.View())
-	}
+	footer := CreateFooter(&m)
 
-	helpText := m.selectedPort + " | ↑/↓: cmds · PgUp/PgDn: scroll"
-	if m.cmdHistIndex != len(m.cmdHist) {
-		helpText += " · ctrl+d: del"
-	}
-
-	footer := lipgloss.NewStyle().MaxWidth(m.inputTa.Width()).
-		Render(connectionText + FooterStyle.Render(helpText))
-
-	border := FocusedBorderStyle.GetBorderStyle()
-
-	serialVpTitle := lipgloss.NewStyle().Foreground(lipgloss.Color("242")).
-		Render(border.Top + border.MiddleRight + " Messages " + border.MiddleLeft)
-	if lipgloss.Width(serialVpTitle) > m.serialVp.Width {
-		serialVpTitle = lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render("")
-	}
-
-	histVpTitle := lipgloss.NewStyle().Foreground(lipgloss.Color("242")).
-		Render(border.Top + border.MiddleRight + " Commands " + border.MiddleLeft)
-	if lipgloss.Width(histVpTitle) > m.cmdVp.Width {
-		histVpTitle = lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render("")
-	}
-
-	// 3. Manually construct the top line of the border with the title inside.
-	// We calculate the number of "─" characters needed to fill the rest of the line.
-	serialVpTitleBar := lipgloss.JoinHorizontal(
-		lipgloss.Left,
-		lipgloss.NewStyle().Foreground(lipgloss.Color("242")).
-			Render(border.TopLeft),
-		serialVpTitle,
-		lipgloss.NewStyle().Foreground(lipgloss.Color("242")).
-			Render(strings.Repeat(border.Top, max(0, m.serialVp.Width-lipgloss.
-				Width(serialVpTitle)+FocusedBorderStyle.GetHorizontalPadding()))),
-		lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render(border.TopRight),
-	)
-
-	histVpTitleBar := lipgloss.JoinHorizontal(
-		lipgloss.Left,
-		lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render(border.TopLeft),
-		histVpTitle,
-		lipgloss.NewStyle().Foreground(lipgloss.Color("242")).
-			Render(strings.Repeat(border.Top, max(0, m.cmdVp.Width-lipgloss.
-				Width(histVpTitle)+FocusedBorderStyle.GetHorizontalPadding()))),
-		lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render(border.TopRight),
-	)
-
-	// 4. Render the viewport content inside a box that has NO top border.
-	serialVpContent := FocusedBorderStyle.Copy().
-		BorderTop(false).
-		Render(m.serialVp.View())
-
-	histVpContent := FocusedBorderStyle.Copy().
-		BorderTop(false).
-		Render(m.cmdVp.View())
-
-	// 5. Join the title bar and the main content vertically.
-	serialViewportString := lipgloss.JoinVertical(lipgloss.Left, serialVpTitleBar, serialVpContent)
-
-	histViewportString := lipgloss.JoinVertical(lipgloss.Left, histVpTitleBar, histVpContent)
+	serialVp := AddBorderAndTitle(m.serialVp, "Messages")
+	cmdVp := AddBorderAndTitle(m.cmdVp, "Commands")
 
 	// Arrange viewports side by side
 	viewports := lipgloss.JoinHorizontal(
 		lipgloss.Top,
-		serialViewportString,
-		histViewportString,
+		serialVp,
+		cmdVp,
 	)
 
 	screen := lipgloss.JoinVertical(
@@ -244,6 +182,55 @@ func (m model) View() string {
 		lipgloss.Center,
 		screen,
 	)
+}
+
+// Adds a border with title to viewport and returns viewport string.
+func AddBorderAndTitle(vp viewport.Model, title string) string {
+	border := FocusedBorderStyle.GetBorderStyle()
+
+	vpTitle := lipgloss.NewStyle().Foreground(lipgloss.Color("242")).
+		Render(border.Top + border.MiddleRight + " " + title + " " + border.MiddleLeft)
+
+	// Remove title if width is too low
+	if lipgloss.Width(vpTitle) > vp.Width {
+		vpTitle = lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render("")
+	}
+
+	// Manually construct the top line of the border with the title inside.
+	// We calculate the number of "─" characters needed to fill the rest of the line.
+	serialVpTitleBar := lipgloss.JoinHorizontal(
+		lipgloss.Left,
+		lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render(border.TopLeft),
+		vpTitle,
+		lipgloss.NewStyle().Foreground(lipgloss.Color("242")).
+			Render(strings.Repeat(border.Top, max(0, vp.Width-lipgloss.
+				Width(vpTitle)+FocusedBorderStyle.GetHorizontalPadding()))),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render(border.TopRight),
+	)
+
+	// Render the viewport content inside a box that has NO top border.
+	vpBody := FocusedBorderStyle.BorderTop(false).Render(vp.View())
+
+	// Join the title bar and the main content vertically.
+	return lipgloss.JoinVertical(lipgloss.Left, serialVpTitleBar, vpBody)
+}
+
+// Returns the footer string
+func CreateFooter(m *model) string {
+	var connectionStatus string
+	if m.conStatus {
+		connectionStatus = fmt.Sprintf(" %s ", ConnectSymbolStyle.Render("●"))
+	} else {
+		connectionStatus = fmt.Sprintf(" %s", m.spinner.View())
+	}
+
+	helpText := m.selectedPort + " | ↑/↓: cmds · PgUp/PgDn: scroll"
+	if m.cmdHistIndex != len(m.cmdHist) {
+		helpText += " · ctrl+d: del"
+	}
+
+	return lipgloss.NewStyle().MaxWidth(m.inputTa.Width()). // TODO check width
+								Render(connectionStatus + FooterStyle.Render(helpText))
 }
 
 func HandleNewWindowSize(m *model, msg tea.WindowSizeMsg) {
