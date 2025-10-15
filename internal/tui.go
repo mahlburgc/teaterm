@@ -237,37 +237,37 @@ func HandleNewWindowSize(m *model, msg tea.WindowSizeMsg) {
 	m.width = msg.Width
 	m.height = msg.Height
 
-	screenWidth := msg.Width - 2
-	screenHight := msg.Height - 3
+	borderWidth, borderHight := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).GetFrameSize()
 
-	// Calculate the vertical and horizontal space taken by the border.
-	verticalMargin, horizontalMargin := FocusedBorderStyle.GetFrameSize()
+	m.serialVp.Width = m.width / 4 * 3
+	m.cmdVp.Width = m.width - m.serialVp.Width
 
-	// The window has been resized, so update the viewport's dimensions.
-	m.serialVp.Width = screenWidth/4*3 - horizontalMargin
-	m.serialVp.Height = screenHight - m.inputTa.Height() - verticalMargin
+	m.serialVp.Width -= borderHight
+	m.cmdVp.Width -= borderWidth
 
-	// m.serialVp.Width = screenWidth / 4 * 3
-	m.cmdVp.Width = screenWidth - m.serialVp.Width - horizontalMargin
+	const footerHight = 1
+	m.serialVp.Height = m.height - lipgloss.Height(m.inputTa.View()) - borderHight - footerHight
 	m.cmdVp.Height = m.serialVp.Height
 
 	m.inputTa.SetWidth(m.width)
 
-	// m.serialVp.Height = screenHight - m.inputTa.Height()
+	log.Printf("margin v, h:     %v, %v\n", borderHight, borderWidth)
+	log.Printf("serial vp  w, h: %v, %v\n", m.serialVp.Width, m.serialVp.Height)
+	log.Printf("cmd vp w, h:     %v, %v\n", m.cmdVp.Width, m.cmdVp.Height)
+	log.Printf("input ta w, h:   %v, %v\n", m.inputTa.Width(), lipgloss.Height(m.inputTa.View()))
 
-	if len(m.serMsg) > 0 {
-		m.serialVp.SetContent(lipgloss.NewStyle().Width(m.serialVp.Width).Render(strings.Join(m.serMsg, "\n")))
-	}
+	resetVp(&m.serialVp, &m.serMsg)
+	resetVp(&m.cmdVp, &m.cmdHist)
+}
 
-	if m.serialVp.Height > 0 {
-		m.serialVp.GotoBottom()
-	}
+func resetVp(vp *viewport.Model, content *[]string) {
+	log.Printf("reset vp: vp height, msg len:   %v, %v\n", vp.Height, len(*content))
 
-	historyContent := strings.Join(m.cmdHist, "\n")
-	m.cmdVp.SetContent(lipgloss.NewStyle().Width(m.cmdVp.Width).Render(historyContent))
-
-	if m.serialVp.Height > 0 {
-		m.cmdVp.GotoBottom()
+	if vp.Height > 0 && len(*content) > 0 {
+		vp.SetContent(lipgloss.NewStyle().Width(vp.Width).
+			Render(strings.Join(*content, "\n")))
+		vp.GotoBottom()
 	}
 }
 
@@ -284,15 +284,38 @@ func HandleSerialRxMsg(m *model, msg string) tea.Cmd {
 
 	// TODO set serial message histrory limit, remove oldest if exceed
 	m.serMsg = append(m.serMsg, line.String())
-	m.serialVp.SetContent(lipgloss.NewStyle().Width(m.serialVp.Width).
-		Render(strings.Join(m.serMsg, "\n")))
-	m.serialVp.GotoBottom()
+	resetVp(&m.serialVp, &m.serMsg)
 
 	// restart msg scanner
 	return readFromPort(m.scanner)
 }
 
+// A serial messages was successfully sent to the serial port.
+// So we log the serial message to the message view and the command view.
 func HandleSerialTxMsg(m *model, msg string) {
+	// Add command to history.
+	// If command is already found in the command histroy, just move command to end to avoid
+	// duplicated commands.
+	foundIndex := -1
+	for i, cmd := range m.cmdHist {
+		if cmd == msg {
+			foundIndex = i
+			break
+		}
+	}
+
+	if foundIndex != -1 {
+		m.cmdHist = append(m.cmdHist[:foundIndex], m.cmdHist[foundIndex+1:]...)
+		m.cmdHist = append(m.cmdHist, msg)
+	} else {
+		m.cmdHist = append(m.cmdHist, msg)
+	}
+
+	// Reset command history viewport and input text area after sending a command.
+	m.inputTa.Reset()
+	resetVp(&m.cmdVp, &m.cmdHist)
+	m.cmdHistIndex = len(m.cmdHist)
+
 	// Log the sent message to the viewport
 	var line strings.Builder
 	if m.showTimestamp {
@@ -304,8 +327,7 @@ func HandleSerialTxMsg(m *model, msg string) {
 
 	// TODO set serial message histrory limit, remove oldest if exceed
 	m.serMsg = append(m.serMsg, VpTxMsgStyle.Render(line.String())) // TODO directly use style for var()
-	m.serialVp.SetContent(strings.Join(m.serMsg, "\n"))
-	m.serialVp.GotoBottom()
+	resetVp(&m.serialVp, &m.serMsg)
 }
 
 // Handle serial port errors.

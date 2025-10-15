@@ -131,30 +131,5 @@ func handleEnterKey(m *model) tea.Cmd {
 		return nil
 	}
 
-	// Add command to history.
-	// If command is already found in the command histroy, just move command to end to avoid
-	// duplicated commands.
-	foundIndex := -1
-	for i, cmd := range m.cmdHist {
-		if cmd == userInput {
-			foundIndex = i
-			break
-		}
-	}
-
-	if foundIndex != -1 {
-		m.cmdHist = append(m.cmdHist[:foundIndex], m.cmdHist[foundIndex+1:]...)
-		m.cmdHist = append(m.cmdHist, userInput)
-	} else {
-		m.cmdHist = append(m.cmdHist, userInput)
-	}
-
-	// Reset command history viewport and input text area after sending a command.
-	m.inputTa.Reset()
-	m.cmdVp.SetContent(lipgloss.NewStyle().Width(m.cmdVp.Width).
-		Render(strings.Join(m.cmdHist, "\n")))
-	m.cmdVp.GotoBottom()
-	m.cmdHistIndex = len(m.cmdHist)
-
 	return SendToPort(m.port, userInput)
 }
