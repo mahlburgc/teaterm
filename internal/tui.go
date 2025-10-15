@@ -257,16 +257,20 @@ func HandleNewWindowSize(m *model, msg tea.WindowSizeMsg) {
 	log.Printf("cmd vp w, h:     %v, %v\n", m.cmdVp.Width, m.cmdVp.Height)
 	log.Printf("input ta w, h:   %v, %v\n", m.inputTa.Width(), lipgloss.Height(m.inputTa.View()))
 
-	resetVp(&m.serialVp, &m.serMsg)
-	resetVp(&m.cmdVp, &m.cmdHist)
+	resetVp(&m.serialVp, &m.serMsg, true)
+	resetVp(&m.cmdVp, &m.cmdHist, false)
 }
 
-func resetVp(vp *viewport.Model, content *[]string) {
+func resetVp(vp *viewport.Model, content *[]string, updateWidth bool) {
 	log.Printf("reset vp: vp height, msg len:   %v, %v\n", vp.Height, len(*content))
 
 	if vp.Height > 0 && len(*content) > 0 {
-		vp.SetContent(lipgloss.NewStyle().Width(vp.Width).
-			Render(strings.Join(*content, "\n")))
+		if updateWidth {
+			vp.SetContent(lipgloss.NewStyle().Width(vp.Width).
+				Render(strings.Join(*content, "\n")))
+		} else {
+			vp.SetContent(lipgloss.NewStyle().Render(strings.Join(*content, "\n")))
+		}
 		vp.GotoBottom()
 	}
 }
@@ -284,7 +288,7 @@ func HandleSerialRxMsg(m *model, msg string) tea.Cmd {
 
 	// TODO set serial message histrory limit, remove oldest if exceed
 	m.serMsg = append(m.serMsg, line.String())
-	resetVp(&m.serialVp, &m.serMsg)
+	resetVp(&m.serialVp, &m.serMsg, true)
 
 	// restart msg scanner
 	return readFromPort(m.scanner)
@@ -313,7 +317,7 @@ func HandleSerialTxMsg(m *model, msg string) {
 
 	// Reset command history viewport and input text area after sending a command.
 	m.inputTa.Reset()
-	resetVp(&m.cmdVp, &m.cmdHist)
+	resetVp(&m.cmdVp, &m.cmdHist, false)
 	m.cmdHistIndex = len(m.cmdHist)
 
 	// Log the sent message to the viewport
@@ -327,7 +331,7 @@ func HandleSerialTxMsg(m *model, msg string) {
 
 	// TODO set serial message histrory limit, remove oldest if exceed
 	m.serMsg = append(m.serMsg, VpTxMsgStyle.Render(line.String())) // TODO directly use style for var()
-	resetVp(&m.serialVp, &m.serMsg)
+	resetVp(&m.serialVp, &m.serMsg, true)
 }
 
 // Handle serial port errors.
