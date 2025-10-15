@@ -30,9 +30,16 @@ go install github.com/mahlburgc/teaterm@latest
 - log to file
 
 ## Next steps
-- further cleanup tui.go
-- improve window resizing
-- fix window resize panic
+- open editor with message content
+- enable mouse scrolling
+- enable mouse selection for commands
+    - use bubblezone for that https://github.com/lrstanley/bubblezone
+- use list bubble for command history
+    - make use of fuzzy finding
+- add scroll bar
+- only auto scroll on new messages if we are at lowest line
+- ctrl + page up / down for faster scrolling
+
 
 ## Useful Resources
 - https://leg100.github.io/en/posts/building-bubbletea-programs/
