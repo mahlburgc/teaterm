@@ -3,10 +3,10 @@ module github.com/mahlburgc/teaterm
 go 1.24.1
 
 require (
+	github.com/acarl005/stripansi v0.0.0-20180116102854-5a71ef0e047d
 	github.com/charmbracelet/bubbles v0.21.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
-	github.com/davecgh/go-spew v1.1.1
 	go.bug.st/serial v1.6.4
 )
 

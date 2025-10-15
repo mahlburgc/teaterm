@@ -1,18 +1,26 @@
 package internal
 
 import (
+	"os"
+	"os/exec"
 	"strings"
 
+	"github.com/acarl005/stripansi"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
+// This message is sent when the editor is closed.
+type editorFinishedMsg struct {
+	err     error
+	content []byte
+}
+
 // Handle all key events in the bubbletea update loop.
 func HandleKeys(m *model, key tea.KeyMsg) tea.Cmd {
 	switch key.String() {
-	case "alt+m":
-		// nothing to do for now
-		return nil
+	case "ctrl+e":
+		return openEditorCmd(m.serMsg)
 	}
 
 	switch key.Type {
@@ -131,4 +139,57 @@ func handleEnterKey(m *model) tea.Cmd {
 	}
 
 	return SendToPort(m.port, userInput)
+}
+
+// openEditorCmd creates a tea.Cmd that runs the editor.
+func openEditorCmd(content []string) tea.Cmd {
+	// Get the editor from the environment variable. Default to vim.
+	editor := os.Getenv("EDITOR")
+	if editor == "" {
+		editor = "vim"
+	}
+
+	// Create a temporary file to store the content.
+	tmpFile, err := os.CreateTemp("", "bubbletea-edit-*.txt")
+	if err != nil {
+		return func() tea.Msg {
+			return editorFinishedMsg{err: err}
+		}
+	}
+
+	// Write the viewport content to the temp file.
+	if _, err := tmpFile.WriteString(stripansi.Strip(strings.Join(content, "\n") + "\n")); err != nil {
+		return func() tea.Msg {
+			return editorFinishedMsg{err: err}
+		}
+	}
+
+	// Close the file so the editor can access it.
+	if err := tmpFile.Close(); err != nil {
+		return func() tea.Msg {
+			return editorFinishedMsg{err: err}
+		}
+	}
+
+	// This is the command that will be executed.
+	c := exec.Command(editor, tmpFile.Name())
+
+	// The magic is here: tea.ExecProcess handles suspending the Bubble Tea
+	// app, running the command, and then sending a message back.
+	return tea.ExecProcess(c, func(err error) tea.Msg {
+		if err != nil {
+			return editorFinishedMsg{err: err}
+		}
+
+		// After the editor closes, read the modified content from the temp file.
+		editedContent, readErr := os.ReadFile(tmpFile.Name())
+		if readErr != nil {
+			return editorFinishedMsg{err: readErr}
+		}
+
+		// Clean up the temporary file.
+		os.Remove(tmpFile.Name())
+
+		return editorFinishedMsg{content: editedContent}
+	})
 }

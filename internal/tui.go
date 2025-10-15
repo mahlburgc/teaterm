@@ -224,7 +224,7 @@ func CreateFooter(m *model) string {
 		connectionStatus = fmt.Sprintf(" %s", m.spinner.View())
 	}
 
-	helpText := m.selectedPort + " | ↑/↓: cmds · PgUp/PgDn: scroll"
+	helpText := m.selectedPort + " | ↑/↓: cmds · PgUp/PgDn: scroll · ctrl+e: open editor"
 	if m.cmdHistIndex != len(m.cmdHist) {
 		helpText += " · ctrl+d: del"
 	}
