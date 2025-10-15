@@ -31,6 +31,8 @@ func LogMsgType(msg any) {
 	switch msg := msg.(type) {
 	case cursor.BlinkMsg:
 		// avoid logging on cursor blink messages
+	case SerialRxMsg:
+		// avoid logging serial rx messages
 	default:
 		log.Printf("Update Msg: Type: %T Value: %v\n", msg, msg)
 	}
