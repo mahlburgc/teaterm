@@ -53,8 +53,7 @@ func deleteCmdFromCmdHist(m *model) {
 	if m.cmdHistIndex != len(m.cmdHist) {
 		m.cmdHist = append(m.cmdHist[:m.cmdHistIndex], m.cmdHist[m.cmdHistIndex+1:]...)
 		m.cmdHistIndex = len(m.cmdHist)
-		m.cmdVp.SetContent(lipgloss.NewStyle().Width(m.cmdVp.Width).
-			Render(strings.Join(m.cmdHist, "\n")))
+		resetVp(&m.cmdVp, &m.cmdHist, false)
 		m.inputTa.Reset()
 	}
 }
@@ -86,8 +85,7 @@ func scrollCmdHistDown(m *model) {
 		} else {
 			// reached end of cmd history
 			m.inputTa.Reset()
-			m.cmdVp.SetContent(lipgloss.NewStyle().Width(m.cmdVp.Width).
-				Render(strings.Join(m.cmdHist, "\n")))
+			m.cmdVp.SetContent(lipgloss.NewStyle().Render(strings.Join(m.cmdHist, "\n")))
 		}
 	}
 }
@@ -119,12 +117,13 @@ func updateCmdHistView(m *model) {
 	// 	}
 	// }
 
-	m.cmdVp.SetContent(lipgloss.NewStyle().Width(m.cmdVp.Width).
-		Render(strings.Join(cmdHistLines, "\n")))
+	m.cmdVp.SetContent(lipgloss.NewStyle().Render(strings.Join(cmdHistLines, "\n")))
 }
 
 // Handle enter key. The enter key sends the message in the input
-// text area to the serial port and stores the command in the command history.
+// text area to the serial port. If sent was successfull,
+// further handling like store the command in the command history and
+// print it to the message window will be done in the event loop.
 func handleEnterKey(m *model) tea.Cmd {
 	userInput := m.inputTa.Value()
 	if userInput == "" {
