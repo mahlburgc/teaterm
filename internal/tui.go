@@ -12,12 +12,14 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	zone "github.com/lrstanley/bubblezone"
+	"github.com/mahlburgc/teaterm/internal/cmdhist"
 	"go.bug.st/serial"
 )
 
 type model struct {
 	serialVp      viewport.Model
-	cmdVp         viewport.Model
+	cmdhist       cmdhist.Model
 	inputTa       textarea.Model
 	serMsg        []string
 	err           error
@@ -26,8 +28,7 @@ type model struct {
 	selectedPort  string
 	selectedMode  *serial.Mode
 	showTimestamp bool
-	cmdHist       []string
-	cmdHistIndex  int
+	restartApp    bool
 	width         int
 	height        int
 	conStatus     bool
@@ -69,8 +70,7 @@ func initialModel(port Port, showTimestamp bool, cmdHist []string,
 	serialVp.KeyMap.PageDown.SetEnabled(false)
 
 	// Command viewport contains the command history.
-	cmdVp := viewport.New(30, 5)
-	cmdVp.Style = lipgloss.NewStyle()
+	cmdhist := cmdhist.New(cmdHist)
 
 	// Spinner symbol runs during port reconnect.
 	reconnectSpinner := spinner.New()
@@ -82,7 +82,7 @@ func initialModel(port Port, showTimestamp bool, cmdHist []string,
 
 	return model{
 		serialVp:      serialVp,
-		cmdVp:         cmdVp,
+		cmdhist:       cmdhist,
 		inputTa:       inputTa,
 		serMsg:        []string{},
 		err:           nil,
@@ -91,12 +91,11 @@ func initialModel(port Port, showTimestamp bool, cmdHist []string,
 		selectedPort:  selectedPort,
 		selectedMode:  selectedMode,
 		showTimestamp: showTimestamp,
-		cmdHist:       cmdHist,
-		cmdHistIndex:  len(cmdHist),
 		width:         0,
 		height:        0,
 		conStatus:     true,
 		spinner:       reconnectSpinner,
+		restartApp:    false,
 	}
 }
 
@@ -110,6 +109,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	LogMsgType(msg)
 
+	m.cmdhist, cmd = m.cmdhist.Update(msg)
+	cmds = append(cmds, cmd)
 	m.inputTa, cmd = m.inputTa.Update(msg)
 	cmds = append(cmds, cmd)
 	m.serialVp, cmd = m.serialVp.Update(msg)
@@ -145,6 +146,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.spinner, cmd = m.spinner.Update(msg)
 			cmds = append(cmds, cmd)
 		}
+
+	case cmdhist.CmdHistMsg:
+		switch msg.Type {
+		case cmdhist.CmdSelected:
+			m.inputTa.SetValue(msg.Cmd)
+
+		case cmdhist.CmdExecuted:
+			cmd = SendToPort(m.port, msg.Cmd)
+			cmds = append(cmds, cmd)
+		}
+
+	case editorFinishedMsg:
+		// workaround bubbletea v1 bug: after executing external command,
+		// mouse support is not restored correctly. Therefore we restart bubbletea.
+		m.restartApp = true
+		return m, tea.Quit
 	}
 
 	return m, tea.Batch(cmds...)
@@ -157,9 +174,8 @@ func (m model) View() string {
 	}
 
 	footer := CreateFooter(&m)
-
 	serialVp := AddBorderAndTitle(m.serialVp, "Messages")
-	cmdVp := AddBorderAndTitle(m.cmdVp, "Commands")
+	cmdVp := AddBorderAndTitle(m.cmdhist.Vp, "Commands")
 
 	// Arrange viewports side by side
 	viewports := lipgloss.JoinHorizontal(
@@ -175,13 +191,12 @@ func (m model) View() string {
 		footer,
 	)
 
-	return lipgloss.Place(
+	return zone.Scan(lipgloss.Place(
 		m.width,
 		m.height,
 		lipgloss.Center,
 		lipgloss.Center,
-		screen,
-	)
+		screen))
 }
 
 // Adds a border with title to viewport and returns viewport string.
@@ -219,13 +234,13 @@ func AddBorderAndTitle(vp viewport.Model, title string) string {
 func CreateFooter(m *model) string {
 	var connectionStatus string
 	if m.conStatus {
-		connectionStatus = fmt.Sprintf(" %s ", ConnectSymbolStyle.Render("●"))
+		connectionStatus = zone.Mark("testsymbol", fmt.Sprintf(" %s ", ConnectSymbolStyle.Render("●")))
 	} else {
 		connectionStatus = fmt.Sprintf(" %s", m.spinner.View())
 	}
 
 	helpText := m.selectedPort + " | ↑/↓: cmds · PgUp/PgDn: scroll · ctrl+e: open editor"
-	if m.cmdHistIndex != len(m.cmdHist) {
+	if m.cmdhist.GetIndex() != m.cmdhist.GetHistLen() {
 		helpText += " · ctrl+d: del"
 	}
 
@@ -241,24 +256,24 @@ func HandleNewWindowSize(m *model, msg tea.WindowSizeMsg) {
 		Border(lipgloss.RoundedBorder()).GetFrameSize()
 
 	m.serialVp.Width = m.width / 4 * 3
-	m.cmdVp.Width = m.width - m.serialVp.Width
+	m.cmdhist.Vp.Width = m.width - m.serialVp.Width
 
 	m.serialVp.Width -= borderHight
-	m.cmdVp.Width -= borderWidth
+	m.cmdhist.Vp.Width -= borderWidth
 
 	const footerHight = 1
 	m.serialVp.Height = m.height - lipgloss.Height(m.inputTa.View()) - borderHight - footerHight
-	m.cmdVp.Height = m.serialVp.Height
+	m.cmdhist.Vp.Height = m.serialVp.Height
 
 	m.inputTa.SetWidth(m.width)
 
 	log.Printf("margin v, h:     %v, %v\n", borderHight, borderWidth)
 	log.Printf("serial vp  w, h: %v, %v\n", m.serialVp.Width, m.serialVp.Height)
-	log.Printf("cmd vp w, h:     %v, %v\n", m.cmdVp.Width, m.cmdVp.Height)
+	log.Printf("cmd vp w, h:     %v, %v\n", m.cmdhist.Vp.Width, m.cmdhist.Vp.Height)
 	log.Printf("input ta w, h:   %v, %v\n", m.inputTa.Width(), lipgloss.Height(m.inputTa.View()))
 
 	resetVp(&m.serialVp, &m.serMsg, true)
-	resetVp(&m.cmdVp, &m.cmdHist, false)
+	m.cmdhist.ResetVp()
 }
 
 func resetVp(vp *viewport.Model, content *[]string, updateWidth bool) {
@@ -298,27 +313,10 @@ func HandleSerialRxMsg(m *model, msg string) tea.Cmd {
 // So we log the serial message to the message view and the command view.
 func HandleSerialTxMsg(m *model, msg string) {
 	// Add command to history.
-	// If command is already found in the command histroy, just move command to end to avoid
-	// duplicated commands.
-	foundIndex := -1
-	for i, cmd := range m.cmdHist {
-		if cmd == msg {
-			foundIndex = i
-			break
-		}
-	}
+	m.cmdhist.AddCmd(msg)
 
-	if foundIndex != -1 {
-		m.cmdHist = append(m.cmdHist[:foundIndex], m.cmdHist[foundIndex+1:]...)
-		m.cmdHist = append(m.cmdHist, msg)
-	} else {
-		m.cmdHist = append(m.cmdHist, msg)
-	}
-
-	// Reset command history viewport and input text area after sending a command.
+	// Reset input text area.
 	m.inputTa.Reset()
-	resetVp(&m.cmdVp, &m.cmdHist, false)
-	m.cmdHistIndex = len(m.cmdHist)
 
 	// Log the sent message to the viewport
 	var line strings.Builder
@@ -365,10 +363,30 @@ func HandlePortReconnect(m *model, port Port) (tea.Cmd, tea.Cmd) {
 }
 
 func RunTui(port Port, mode serial.Mode, flags Flags, config Config) {
-	m := initialModel(port, flags.Timestamp, config.CmdHistoryLines, flags.Port, &mode)
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	zone.NewGlobal()
 
-	if _, err := p.Run(); err != nil {
-		log.Fatal(err)
+	log.Printf("Cmd history on startup %v\n", config.CmdHistoryLines)
+	m := initialModel(port, flags.Timestamp, config.CmdHistoryLines, flags.Port, &mode)
+
+	for {
+		p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
+		finalModel, err := p.Run()
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		var ok bool
+		m, ok = finalModel.(model)
+		if !ok {
+			log.Fatal("Could not cast final model to model type")
+		}
+
+		log.Printf("%v\n", m.cmdhist)
+		log.Printf("%v\n", m.serMsg)
+
+		if !m.restartApp {
+			break
+		}
+		m.restartApp = false
 	}
 }
