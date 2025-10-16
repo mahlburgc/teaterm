@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	zone "github.com/lrstanley/bubblezone"
 	"go.bug.st/serial"
 )
 
@@ -140,6 +142,38 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ErrMsg:
 		m.err = msg.err
 
+	case tea.MouseMsg:
+		for i := range m.cmdHist {
+			if zone.Get(strconv.Itoa(i)).InBounds(msg) {
+				m.cmdHistIndex = i
+				// Do something if it's in bounds, e.g. toggling a model flag to let
+				// View() know to change its highlight colors.
+				ConnectSymbolStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("200"))
+			}
+		}
+
+		AddCmdStyle(&m)
+
+		if msg.Button != tea.MouseButtonLeft {
+			return m, nil
+		}
+
+		if msg.Action == tea.MouseActionPress {
+			return m, nil
+		}
+
+		if msg.Action == tea.MouseActionRelease {
+			return m, SendToPort(m.port, m.cmdHist[m.cmdHistIndex])
+		}
+
+		return m, nil
+
+		// x, y := zone.Get("confirm").Pos() can be used to get the relative
+		// coordinates within the zone. Useful if you need to move a cursor in a
+		// input box as an example.
+
+		return m, nil
+
 	case spinner.TickMsg:
 		if !m.conStatus {
 			m.spinner, cmd = m.spinner.Update(msg)
@@ -175,13 +209,19 @@ func (m model) View() string {
 		footer,
 	)
 
-	return lipgloss.Place(
+	return zone.Scan(lipgloss.Place(
 		m.width,
 		m.height,
 		lipgloss.Center,
 		lipgloss.Center,
-		screen,
-	)
+		screen))
+}
+
+// Add zones to command vp
+func AddZones(commands *[]string) {
+	for i, cmd := range *commands {
+		(*commands)[i] = zone.Mark(strconv.Itoa(i), cmd)
+	}
 }
 
 // Adds a border with title to viewport and returns viewport string.
@@ -219,7 +259,7 @@ func AddBorderAndTitle(vp viewport.Model, title string) string {
 func CreateFooter(m *model) string {
 	var connectionStatus string
 	if m.conStatus {
-		connectionStatus = fmt.Sprintf(" %s ", ConnectSymbolStyle.Render("●"))
+		connectionStatus = zone.Mark("testsymbol", fmt.Sprintf(" %s ", ConnectSymbolStyle.Render("●")))
 	} else {
 		connectionStatus = fmt.Sprintf(" %s", m.spinner.View())
 	}
@@ -365,8 +405,10 @@ func HandlePortReconnect(m *model, port Port) (tea.Cmd, tea.Cmd) {
 }
 
 func RunTui(port Port, mode serial.Mode, flags Flags, config Config) {
+	zone.NewGlobal()
+
 	m := initialModel(port, flags.Timestamp, config.CmdHistoryLines, flags.Port, &mode)
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 
 	if _, err := p.Run(); err != nil {
 		log.Fatal(err)

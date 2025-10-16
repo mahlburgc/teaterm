@@ -3,11 +3,13 @@ package internal
 import (
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 
 	"github.com/acarl005/stripansi"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	zone "github.com/lrstanley/bubblezone"
 )
 
 // This message is sent when the editor is closed.
@@ -93,7 +95,7 @@ func scrollCmdHistDown(m *model) {
 		} else {
 			// reached end of cmd history
 			m.inputTa.Reset()
-			m.cmdVp.SetContent(lipgloss.NewStyle().Render(strings.Join(m.cmdHist, "\n")))
+			AddCmdStyle(m)
 		}
 	}
 }
@@ -101,30 +103,20 @@ func scrollCmdHistDown(m *model) {
 func updateCmdHistView(m *model) {
 	m.inputTa.SetValue(m.cmdHist[m.cmdHistIndex])
 	m.inputTa.SetCursor(len(m.inputTa.Value()))
+	AddCmdStyle(m)
+}
 
+func AddCmdStyle(m *model) {
 	// apply style for selected command in command history view
 	// Create the slice with a known size to prevent reallocations in the loop
 	cmdHistLines := make([]string, len(m.cmdHist))
 	for i, cmd := range m.cmdHist {
 		if i == m.cmdHistIndex {
-			cmdHistLines[i] = SelectedCmdStyle.Render("> " + cmd)
+			cmdHistLines[i] = zone.Mark(strconv.Itoa(i), SelectedCmdStyle.Render("> "+cmd))
 		} else {
-			cmdHistLines[i] = cmd
+			cmdHistLines[i] = zone.Mark(strconv.Itoa(i), cmd)
 		}
 	}
-	// // Use a strings.Builder for the most efficient way to build the view
-	// var b strings.Builder
-	// for i, cmd := range m.cmdHist {
-	// 	if i > 0 {
-	// 		b.WriteString("\n")
-	// 	}
-	// 	if i == m.cmdHistIndex {
-	// 		b.WriteString(SelectedCmdStyle.Render("> " + cmd))
-	// 	} else {
-	// 		b.WriteString(cmd)
-	// 	}
-	// }
-
 	m.cmdVp.SetContent(lipgloss.NewStyle().Render(strings.Join(cmdHistLines, "\n")))
 }
 

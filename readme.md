@@ -39,6 +39,8 @@ go install github.com/mahlburgc/teaterm@latest
 - add scroll bar
 - only auto scroll on new messages if we are at lowest line
 - ctrl + page up / down for faster scrolling
+- add readme section about editor variable
+- use ctrl+q for quit
 
 
 ## Useful Resources
