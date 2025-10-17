@@ -145,6 +145,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.spinner, cmd = m.spinner.Update(msg)
 			cmds = append(cmds, cmd)
 		}
+	case cmdhist.CmdHistMsg:
+		switch msg.Type {
+		case cmdhist.CmdSelected:
+			cmd = SendToPort(m.port, msg.Cmd)
+			cmds = append(cmds, cmd)
+		}
+
 	}
 
 	return m, tea.Batch(cmds...)

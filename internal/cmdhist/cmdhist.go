@@ -11,6 +11,18 @@ import (
 	zone "github.com/lrstanley/bubblezone"
 )
 
+// This message is sent when a cmd was selected.
+type CmdHistMsg struct {
+	Type MsgType
+	Cmd  string
+}
+
+type MsgType int
+
+const (
+	CmdSelected MsgType = 0
+)
+
 type Model struct {
 	Vp           viewport.Model
 	SelectStyle  lipgloss.Style
@@ -64,6 +76,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 		m.updateCmdHistView()
 
+		if m.cmdHistIndex == len(m.cmdHist) {
+			return m, nil
+		}
+
 		if msg.Button != tea.MouseButtonLeft {
 			return m, nil
 		}
@@ -73,7 +89,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 
 		if msg.Action == tea.MouseActionRelease {
-			// TODO
+			return m, SendCmdSelectedMsg(m.cmdHist[m.cmdHistIndex])
 		}
 
 		// x, y := zone.Get("confirm").Pos() can be used to get the relative
@@ -84,6 +100,16 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 	default:
 		return m, nil
+	}
+}
+
+// Returns a Tea command to send a message with the selected cmd to the event loop.
+func SendCmdSelectedMsg(cmd string) tea.Cmd {
+	return func() tea.Msg {
+		return CmdHistMsg{
+			Type: CmdSelected,
+			Cmd:  cmd,
+		}
 	}
 }
 
