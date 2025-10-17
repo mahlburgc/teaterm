@@ -24,7 +24,7 @@ func HandleKeys(m *model, key tea.KeyMsg) tea.Cmd {
 
 	switch key.Type {
 	case tea.KeyCtrlC, tea.KeyEsc:
-		StoreConfig(m.cmdHist)
+		StoreConfig(m.cmdhist.GetCmdHist())
 		return tea.Quit
 
 	case tea.KeyPgUp:
@@ -36,7 +36,7 @@ func HandleKeys(m *model, key tea.KeyMsg) tea.Cmd {
 		return nil
 
 	case tea.KeyEnter:
-		return handleEnterKey()
+		return handleEnterKey(m)
 	}
 
 	return nil

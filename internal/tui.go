@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"log"
-	"strconv"
 	"strings"
 	"time"
 
@@ -14,12 +13,13 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	zone "github.com/lrstanley/bubblezone"
+	"github.com/mahlburgc/teaterm/internal/cmdhist"
 	"go.bug.st/serial"
 )
 
 type model struct {
 	serialVp      viewport.Model
-	cmdVp         viewport.Model
+	cmdhist       cmdhist.Model
 	inputTa       textarea.Model
 	serMsg        []string
 	err           error
@@ -28,12 +28,11 @@ type model struct {
 	selectedPort  string
 	selectedMode  *serial.Mode
 	showTimestamp bool
-	cmdHist       []string
-	cmdHistIndex  int
-	width         int
-	height        int
-	conStatus     bool
-	spinner       spinner.Model
+
+	width     int
+	height    int
+	conStatus bool
+	spinner   spinner.Model
 }
 
 func initialModel(port Port, showTimestamp bool, cmdHist []string,
@@ -71,8 +70,7 @@ func initialModel(port Port, showTimestamp bool, cmdHist []string,
 	serialVp.KeyMap.PageDown.SetEnabled(false)
 
 	// Command viewport contains the command history.
-	cmdVp := viewport.New(30, 5)
-	cmdVp.Style = lipgloss.NewStyle()
+	cmdhist := cmdhist.New()
 
 	// Spinner symbol runs during port reconnect.
 	reconnectSpinner := spinner.New()
@@ -84,7 +82,7 @@ func initialModel(port Port, showTimestamp bool, cmdHist []string,
 
 	return model{
 		serialVp:      serialVp,
-		cmdVp:         cmdVp,
+		cmdhist:       cmdhist,
 		inputTa:       inputTa,
 		serMsg:        []string{},
 		err:           nil,
@@ -93,8 +91,6 @@ func initialModel(port Port, showTimestamp bool, cmdHist []string,
 		selectedPort:  selectedPort,
 		selectedMode:  selectedMode,
 		showTimestamp: showTimestamp,
-		cmdHist:       cmdHist,
-		cmdHistIndex:  len(cmdHist),
 		width:         0,
 		height:        0,
 		conStatus:     true,
@@ -112,6 +108,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	LogMsgType(msg)
 
+	m.cmdhist, cmd = m.cmdhist.Update(msg)
+	cmds = append(cmds, cmd)
 	m.inputTa, cmd = m.inputTa.Update(msg)
 	cmds = append(cmds, cmd)
 	m.serialVp, cmd = m.serialVp.Update(msg)
@@ -142,38 +140,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ErrMsg:
 		m.err = msg.err
 
-	case tea.MouseMsg:
-		for i := range m.cmdHist {
-			if zone.Get(strconv.Itoa(i)).InBounds(msg) {
-				m.cmdHistIndex = i
-				// Do something if it's in bounds, e.g. toggling a model flag to let
-				// View() know to change its highlight colors.
-				ConnectSymbolStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("200"))
-			}
-		}
-
-		AddCmdStyle(&m)
-
-		if msg.Button != tea.MouseButtonLeft {
-			return m, nil
-		}
-
-		if msg.Action == tea.MouseActionPress {
-			return m, nil
-		}
-
-		if msg.Action == tea.MouseActionRelease {
-			return m, SendToPort(m.port, m.cmdHist[m.cmdHistIndex])
-		}
-
-		return m, nil
-
-		// x, y := zone.Get("confirm").Pos() can be used to get the relative
-		// coordinates within the zone. Useful if you need to move a cursor in a
-		// input box as an example.
-
-		return m, nil
-
 	case spinner.TickMsg:
 		if !m.conStatus {
 			m.spinner, cmd = m.spinner.Update(msg)
@@ -191,9 +157,8 @@ func (m model) View() string {
 	}
 
 	footer := CreateFooter(&m)
-
 	serialVp := AddBorderAndTitle(m.serialVp, "Messages")
-	cmdVp := AddBorderAndTitle(m.cmdVp, "Commands")
+	cmdVp := AddBorderAndTitle(m.cmdhist.Vp, "Commands")
 
 	// Arrange viewports side by side
 	viewports := lipgloss.JoinHorizontal(
@@ -215,13 +180,6 @@ func (m model) View() string {
 		lipgloss.Center,
 		lipgloss.Center,
 		screen))
-}
-
-// Add zones to command vp
-func AddZones(commands *[]string) {
-	for i, cmd := range *commands {
-		(*commands)[i] = zone.Mark(strconv.Itoa(i), cmd)
-	}
 }
 
 // Adds a border with title to viewport and returns viewport string.
@@ -265,7 +223,7 @@ func CreateFooter(m *model) string {
 	}
 
 	helpText := m.selectedPort + " | ↑/↓: cmds · PgUp/PgDn: scroll · ctrl+e: open editor"
-	if m.cmdHistIndex != len(m.cmdHist) {
+	if m.cmdhist.GetIndex() != m.cmdhist.GetHistLen() {
 		helpText += " · ctrl+d: del"
 	}
 
@@ -281,24 +239,24 @@ func HandleNewWindowSize(m *model, msg tea.WindowSizeMsg) {
 		Border(lipgloss.RoundedBorder()).GetFrameSize()
 
 	m.serialVp.Width = m.width / 4 * 3
-	m.cmdVp.Width = m.width - m.serialVp.Width
+	m.cmdhist.Vp.Width = m.width - m.serialVp.Width
 
 	m.serialVp.Width -= borderHight
-	m.cmdVp.Width -= borderWidth
+	m.cmdhist.Vp.Width -= borderWidth
 
 	const footerHight = 1
 	m.serialVp.Height = m.height - lipgloss.Height(m.inputTa.View()) - borderHight - footerHight
-	m.cmdVp.Height = m.serialVp.Height
+	m.cmdhist.Vp.Height = m.serialVp.Height
 
 	m.inputTa.SetWidth(m.width)
 
 	log.Printf("margin v, h:     %v, %v\n", borderHight, borderWidth)
 	log.Printf("serial vp  w, h: %v, %v\n", m.serialVp.Width, m.serialVp.Height)
-	log.Printf("cmd vp w, h:     %v, %v\n", m.cmdVp.Width, m.cmdVp.Height)
+	log.Printf("cmd vp w, h:     %v, %v\n", m.cmdhist.Vp.Width, m.cmdhist.Vp.Height)
 	log.Printf("input ta w, h:   %v, %v\n", m.inputTa.Width(), lipgloss.Height(m.inputTa.View()))
 
 	resetVp(&m.serialVp, &m.serMsg, true)
-	resetVp(&m.cmdVp, &m.cmdHist, false)
+	m.cmdhist.ResetVp()
 }
 
 func resetVp(vp *viewport.Model, content *[]string, updateWidth bool) {
@@ -338,27 +296,10 @@ func HandleSerialRxMsg(m *model, msg string) tea.Cmd {
 // So we log the serial message to the message view and the command view.
 func HandleSerialTxMsg(m *model, msg string) {
 	// Add command to history.
-	// If command is already found in the command histroy, just move command to end to avoid
-	// duplicated commands.
-	foundIndex := -1
-	for i, cmd := range m.cmdHist {
-		if cmd == msg {
-			foundIndex = i
-			break
-		}
-	}
+	m.cmdhist.AddCmd(msg)
 
-	if foundIndex != -1 {
-		m.cmdHist = append(m.cmdHist[:foundIndex], m.cmdHist[foundIndex+1:]...)
-		m.cmdHist = append(m.cmdHist, msg)
-	} else {
-		m.cmdHist = append(m.cmdHist, msg)
-	}
-
-	// Reset command history viewport and input text area after sending a command.
+	// Reset input text area.
 	m.inputTa.Reset()
-	resetVp(&m.cmdVp, &m.cmdHist, false)
-	m.cmdHistIndex = len(m.cmdHist)
 
 	// Log the sent message to the viewport
 	var line strings.Builder
