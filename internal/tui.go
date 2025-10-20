@@ -109,8 +109,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	LogMsgType(msg)
 
-	m.cmdhist, cmd = m.cmdhist.Update(msg)
-	cmds = append(cmds, cmd)
+	if m.conStatus {
+		m.cmdhist, cmd = m.cmdhist.Update(msg)
+		cmds = append(cmds, cmd)
+	}
 	m.inputTa, cmd = m.inputTa.Update(msg)
 	cmds = append(cmds, cmd)
 	m.serialVp, cmd = m.serialVp.Update(msg)
@@ -131,15 +133,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmd = HandleSerialRxMsg(&m, string(msg))
 		cmds = append(cmds, cmd)
 
-	case *serial.PortError:
-		reconnectCmd, spinnerCmd := HandleSerialPortErr(&m, msg)
-		cmds = append(cmds, reconnectCmd, spinnerCmd)
-
 	case PortConnectedMsg:
-		HandlePortReconnect(&m, msg.port)
+		cmd1, cmd2 := HandlePortReconnect(&m, msg.port)
+		cmds = append(cmds, tea.Batch(cmd1, cmd2))
 
 	case ErrMsg:
-		m.err = msg.err
+		switch msg.err.(type) {
+		case *serial.PortError:
+			reconnectCmd, spinnerCmd := HandleSerialPortErr(&m, msg.err.(*serial.PortError))
+			cmds = append(cmds, reconnectCmd, spinnerCmd)
+		default:
+			m.err = msg.err
+		}
 
 	case spinner.TickMsg:
 		if !m.conStatus {

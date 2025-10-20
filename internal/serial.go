@@ -82,6 +82,7 @@ func reconnectToPort(selectedPort string, selectedMode *serial.Mode) tea.Cmd {
 // The tea command returns the received message or error, if occured.
 func readFromPort(scanner *bufio.Scanner) tea.Cmd {
 	return func() tea.Msg {
+		log.Println("Starting read from port")
 		for scanner.Scan() {
 			line := scanner.Text()
 			return SerialRxMsg(line)
