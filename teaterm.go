@@ -20,7 +20,7 @@ func main() {
 	var port io.ReadWriteCloser
 	var mode serial.Mode
 
-	if len(os.Getenv("DEBUG_TEATERM")) > 0 {
+	if len(os.Getenv("TEATERM_MOCK_PORT")) > 0 {
 		port, mode = internal.OpenFakePort()
 	} else {
 		port, mode = internal.OpenPort(flags.Port)

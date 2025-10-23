@@ -13,7 +13,7 @@ import (
 
 // Open (or create if no exist) a log file for debug logging.
 func StartLogger(logfile string) *os.File {
-	if len(os.Getenv("LOG_TEATERM")) > 0 {
+	if len(os.Getenv("TEATERM_DBG_LOG")) > 0 {
 		logfile, err := tea.LogToFile("debug.log", "debug")
 		if err != nil {
 			fmt.Println("fatal:", err)
