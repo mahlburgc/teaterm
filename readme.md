@@ -56,6 +56,7 @@ source ~/.zshrc
     - scroll message log
 - easily open editor with current message log
 - timestamp
+- create log files
 
 ## Planned features
 
@@ -66,7 +67,6 @@ source ~/.zshrc
 - create different profiles with separate settings, command histories and predefined commands
 - possibility to create predefined commands / favorites for faster communication with serial CLIs
 - auto completion suggestions for send commands based on command history
-- log to file
 - use list bubble for command history for advanced fuzzy finding
 - make command history length and message log length configurable
 - add scroll bar for message log
@@ -75,7 +75,7 @@ source ~/.zshrc
 - ctrl + page up / down for faster scrolling
 - use ctrl+q for quit
 - choose between ascii and hex view
-- on hex view, ignore non ascii characters
+- on ascii view, ignore non ascii characters
 - option to display line ending characters
 - use cobra for better cli command handling and flags
 
