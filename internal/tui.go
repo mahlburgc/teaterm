@@ -180,8 +180,10 @@ func (m model) View() string {
 		return fmt.Sprintf("\nWe had some trouble: %v\n\n", m.err)
 	}
 
+	serialVpFooter := fmt.Sprintf("%v, %3.f%%", len(m.serMsg), m.serialVp.ScrollPercent()*100)
+
 	footer := CreateFooter(&m)
-	serialVp := AddBorder(m.serialVp, "Messages", fmt.Sprintf("%3.f%%", m.serialVp.ScrollPercent()*100))
+	serialVp := AddBorder(m.serialVp, "Messages", serialVpFooter)
 	cmdVp := AddBorder(m.cmdhist.Vp, "Commands", "")
 
 	// Arrange viewports side by side
