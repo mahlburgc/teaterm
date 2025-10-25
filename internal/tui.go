@@ -181,8 +181,8 @@ func (m model) View() string {
 	}
 
 	footer := CreateFooter(&m)
-	serialVp := AddBorderAndTitle(m.serialVp, "Messages")
-	cmdVp := AddBorderAndTitle(m.cmdhist.Vp, "Commands")
+	serialVp := AddBorder(m.serialVp, "Messages", fmt.Sprintf("%3.f%%", m.serialVp.ScrollPercent()*100))
+	cmdVp := AddBorder(m.cmdhist.Vp, "Commands", "")
 
 	// Arrange viewports side by side
 	viewports := lipgloss.JoinHorizontal(
@@ -207,34 +207,64 @@ func (m model) View() string {
 }
 
 // Adds a border with title to viewport and returns viewport string.
-func AddBorderAndTitle(vp viewport.Model, title string) string {
+func AddBorder(vp viewport.Model, title string, footer string) string {
 	border := FocusedBorderStyle.GetBorderStyle()
+	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("242"))
 
-	vpTitle := lipgloss.NewStyle().Foreground(lipgloss.Color("242")).
-		Render(border.Top + border.MiddleRight + " " + title + " " + border.MiddleLeft)
+	var vpTitle string
 
-	// Remove title if width is too low
-	if lipgloss.Width(vpTitle) > vp.Width {
-		vpTitle = lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render("")
+	if title == "" {
+		vpTitle = ""
+	} else {
+		vpTitle = borderStyle.Render(border.Top + border.MiddleRight + " " + title + " " + border.MiddleLeft)
+		// Remove title if width is too low
+		if lipgloss.Width(vpTitle) > vp.Width {
+			vpTitle = ""
+		}
 	}
 
 	// Manually construct the top line of the border with the title inside.
 	// We calculate the number of "─" characters needed to fill the rest of the line.
-	serialVpTitleBar := lipgloss.JoinHorizontal(
+	vpTitleBar := lipgloss.JoinHorizontal(
 		lipgloss.Left,
-		lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render(border.TopLeft),
+		borderStyle.Render(border.TopLeft),
 		vpTitle,
-		lipgloss.NewStyle().Foreground(lipgloss.Color("242")).
+		borderStyle.
 			Render(strings.Repeat(border.Top, max(0, vp.Width-lipgloss.
 				Width(vpTitle)+FocusedBorderStyle.GetHorizontalPadding()))),
-		lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render(border.TopRight),
+		borderStyle.Render(border.TopRight),
 	)
 
-	// Render the viewport content inside a box that has NO top border.
-	vpBody := FocusedBorderStyle.BorderTop(false).Render(vp.View())
+	var vpFooter string
+
+	if footer == "" {
+		vpFooter = ""
+	} else {
+		vpFooter = borderStyle.Render(border.MiddleRight + " " + footer + " " +
+			border.MiddleLeft + border.Bottom)
+		// Remove footer if width is too low
+		if lipgloss.Width(vpFooter) > vp.Width {
+			vpFooter = ""
+		}
+	}
+
+	// Manually construct the bottom line of the border with the scroll percentage inside.
+	// We calculate the number of "─" characters needed to fill the rest of the line.
+	vpFooterBar := lipgloss.JoinHorizontal(
+		lipgloss.Left,
+		borderStyle.Render(border.BottomLeft),
+		borderStyle.
+			Render(strings.Repeat(border.Top, max(0, vp.Width-lipgloss.
+				Width(vpFooter)+FocusedBorderStyle.GetHorizontalPadding()))),
+		vpFooter,
+		borderStyle.Render(border.BottomRight),
+	)
+
+	// Render the viewport content inside a box that has NO top and bottom border.
+	vpBody := FocusedBorderStyle.BorderTop(false).BorderBottom(false).Render(vp.View())
 
 	// Join the title bar and the main content vertically.
-	return lipgloss.JoinVertical(lipgloss.Left, serialVpTitleBar, vpBody)
+	return lipgloss.JoinVertical(lipgloss.Left, vpTitleBar, vpBody, vpFooterBar)
 }
 
 // Returns the footer string
@@ -279,11 +309,11 @@ func HandleNewWindowSize(m *model, msg tea.WindowSizeMsg) {
 	log.Printf("cmd vp w, h:     %v, %v\n", m.cmdhist.Vp.Width, m.cmdhist.Vp.Height)
 	log.Printf("input ta w, h:   %v, %v\n", m.inputTa.Width(), lipgloss.Height(m.inputTa.View()))
 
-	resetVp(&m.serialVp, &m.serMsg, true)
+	updateVp(&m.serialVp, &m.serMsg, false, true)
 	m.cmdhist.ResetVp()
 }
 
-func resetVp(vp *viewport.Model, content *[]string, updateWidth bool) {
+func updateVp(vp *viewport.Model, content *[]string, updateWidth bool, gotoBottom bool) {
 	log.Printf("reset vp: vp height, msg len:   %v, %v\n", vp.Height, len(*content))
 
 	if vp.Height > 0 && len(*content) > 0 {
@@ -293,7 +323,9 @@ func resetVp(vp *viewport.Model, content *[]string, updateWidth bool) {
 		} else {
 			vp.SetContent(lipgloss.NewStyle().Render(strings.Join(*content, "\n")))
 		}
-		vp.GotoBottom()
+		if gotoBottom {
+			vp.GotoBottom()
+		}
 	}
 }
 
@@ -316,7 +348,9 @@ func HandleSerialRxMsg(m *model, msg string) tea.Cmd {
 		m.serialLog.Println(line.String())
 	}
 
-	resetVp(&m.serialVp, &m.serMsg, true)
+	// reset viewport only if we did not scrolled up in msg history
+	goToBottom := m.serialVp.ScrollPercent() == 1
+	updateVp(&m.serialVp, &m.serMsg, false, goToBottom)
 
 	// restart msg scanner
 	return readFromPort(m.scanner)
@@ -348,7 +382,9 @@ func HandleSerialTxMsg(m *model, msg string) {
 	// TODO set serial message histrory limit, remove oldest if exceed
 	m.serMsg = append(m.serMsg, VpTxMsgStyle.Render(line.String())) // TODO directly use style for var()
 
-	resetVp(&m.serialVp, &m.serMsg, true)
+	// reset viewport only if we did not scrolled up in msg history
+	goToBottom := m.serialVp.ScrollPercent() == 1
+	updateVp(&m.serialVp, &m.serMsg, false, goToBottom)
 }
 
 // Handle serial port errors.
@@ -399,9 +435,6 @@ func RunTui(port Port, mode serial.Mode, flags Flags, config Config, serialLog *
 		if !ok {
 			log.Fatal("Could not cast final model to model type")
 		}
-
-		log.Printf("%v\n", m.cmdhist)
-		log.Printf("%v\n", m.serMsg)
 
 		if !m.restartApp {
 			break
