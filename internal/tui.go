@@ -33,10 +33,11 @@ type model struct {
 	height        int
 	conStatus     bool
 	spinner       spinner.Model
+	serialLog     *log.Logger
 }
 
 func initialModel(port Port, showTimestamp bool, cmdHist []string,
-	selectedPort string, selectedMode *serial.Mode,
+	selectedPort string, selectedMode *serial.Mode, serialLog *log.Logger,
 ) model {
 	// Input text area contains text field to send commands to the serial port.
 	inputTa := textarea.New()
@@ -96,6 +97,7 @@ func initialModel(port Port, showTimestamp bool, cmdHist []string,
 		conStatus:     true,
 		spinner:       reconnectSpinner,
 		restartApp:    false,
+		serialLog:     serialLog,
 	}
 }
 
@@ -107,7 +109,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 	var cmd tea.Cmd
 
-	LogMsgType(msg)
+	DbgLogMsgType(msg)
 
 	if m.conStatus {
 		m.cmdhist, cmd = m.cmdhist.Update(msg)
@@ -308,6 +310,12 @@ func HandleSerialRxMsg(m *model, msg string) tea.Cmd {
 
 	// TODO set serial message histrory limit, remove oldest if exceed
 	m.serMsg = append(m.serMsg, line.String())
+
+	// Add command to serial logger, if logger is active
+	if m.serialLog != nil {
+		m.serialLog.Println(line.String())
+	}
+
 	resetVp(&m.serialVp, &m.serMsg, true)
 
 	// restart msg scanner
@@ -332,8 +340,14 @@ func HandleSerialTxMsg(m *model, msg string) {
 	// line.WriteString("> ")
 	line.WriteString(msg)
 
+	// Add command to serial logger, if logger is active
+	if m.serialLog != nil {
+		m.serialLog.Println(line.String())
+	}
+
 	// TODO set serial message histrory limit, remove oldest if exceed
 	m.serMsg = append(m.serMsg, VpTxMsgStyle.Render(line.String())) // TODO directly use style for var()
+
 	resetVp(&m.serialVp, &m.serMsg, true)
 }
 
@@ -367,11 +381,11 @@ func HandlePortReconnect(m *model, port Port) (tea.Cmd, tea.Cmd) {
 	return cursorBlinkCmd, readCmd
 }
 
-func RunTui(port Port, mode serial.Mode, flags Flags, config Config) {
+func RunTui(port Port, mode serial.Mode, flags Flags, config Config, serialLog *log.Logger) {
 	zone.NewGlobal()
 
 	log.Printf("Cmd history on startup %v\n", config.CmdHistoryLines)
-	m := initialModel(port, flags.Timestamp, config.CmdHistoryLines, flags.Port, &mode)
+	m := initialModel(port, flags.Timestamp, config.CmdHistoryLines, flags.Port, &mode, serialLog)
 
 	for {
 		p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
