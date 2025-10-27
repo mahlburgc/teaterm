@@ -85,7 +85,7 @@ func openEditorCmd(content []string) tea.Cmd {
 	// Get the editor from the environment variable. Default to vim.
 	editor := os.Getenv("EDITOR")
 	if editor == "" {
-		editor = "vim"
+		editor = "vi"
 	}
 
 	// Create a temporary file to store the content.
