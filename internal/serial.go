@@ -54,7 +54,7 @@ func OpenPort(portname string) (Port, serial.Mode) {
 	}
 	port, err := serial.Open(portname, &mode)
 	if err != nil {
-		fmt.Println(err)
+		fmt.Printf("%s: %s\n", portname, err.Error())
 		os.Exit(1)
 	}
 	return port, mode
