@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"os"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -53,7 +54,8 @@ func OpenPort(portname string) (Port, serial.Mode) {
 	}
 	port, err := serial.Open(portname, &mode)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Println(err)
+		os.Exit(1)
 	}
 	return port, mode
 }
