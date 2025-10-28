@@ -3,6 +3,7 @@ package internal
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"log"
 	"strings"
 	"time"
@@ -23,7 +24,7 @@ type model struct {
 	inputTa       textarea.Model
 	serMsg        []string
 	err           error
-	port          Port
+	port          *io.ReadWriteCloser
 	scanner       *bufio.Scanner
 	selectedPort  string
 	selectedMode  *serial.Mode
@@ -36,7 +37,7 @@ type model struct {
 	serialLog     *log.Logger
 }
 
-func initialModel(port Port, showTimestamp bool, cmdHist []string,
+func initialModel(port *io.ReadWriteCloser, showTimestamp bool, cmdHist []string,
 	selectedPort string, selectedMode *serial.Mode, serialLog *log.Logger,
 ) model {
 	// Input text area contains text field to send commands to the serial port.
@@ -79,7 +80,7 @@ func initialModel(port Port, showTimestamp bool, cmdHist []string,
 	reconnectSpinner.Style = SpinnerStyle
 
 	// Scanner searches for incomming serial messages
-	scanner := bufio.NewScanner(port)
+	scanner := bufio.NewScanner(*port)
 
 	return model{
 		serialVp:      serialVp,
@@ -160,7 +161,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.inputTa.SetValue(msg.Cmd)
 
 		case cmdhist.CmdExecuted:
-			cmd = SendToPort(m.port, msg.Cmd)
+			cmd = SendToPort(*m.port, msg.Cmd)
 			cmds = append(cmds, cmd)
 		}
 
@@ -397,7 +398,7 @@ func HandleSerialPortErr(m *model, msg *serial.PortError) (tea.Cmd, tea.Cmd) {
 		m.inputTa.Reset()
 		m.inputTa.Blur()
 		m.conStatus = false
-		m.port.Close()
+		(*m.port).Close()
 		m.inputTa.Placeholder = "Reconnecting..."
 		reconnectCmd := reconnectToPort(m.selectedPort, m.selectedMode)
 		spinnerCmd := m.spinner.Tick
@@ -412,14 +413,14 @@ func HandlePortReconnect(m *model, port Port) (tea.Cmd, tea.Cmd) {
 	m.inputTa.Placeholder = "Send a message..." // TODO remove duplicated code
 	cursorBlinkCmd := m.inputTa.Focus()
 	m.conStatus = true
-	m.port = port
-	m.scanner = bufio.NewScanner(m.port)
+	*m.port = port
+	m.scanner = bufio.NewScanner(*m.port)
 	readCmd := readFromPort(m.scanner)
 
 	return cursorBlinkCmd, readCmd
 }
 
-func RunTui(port Port, mode serial.Mode, flags Flags, config Config, serialLog *log.Logger) {
+func RunTui(port *io.ReadWriteCloser, mode serial.Mode, flags Flags, config Config, serialLog *log.Logger) {
 	zone.NewGlobal()
 
 	log.Printf("Cmd history on startup %v\n", config.CmdHistoryLines)

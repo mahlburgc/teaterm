@@ -77,7 +77,7 @@ func handleEnterKey(m *model) tea.Cmd {
 		return nil
 	}
 
-	return SendToPort(m.port, userInput)
+	return SendToPort(*m.port, userInput)
 }
 
 // openEditorCmd creates a tea.Cmd that runs the editor.
