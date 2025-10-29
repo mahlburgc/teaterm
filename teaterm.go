@@ -20,6 +20,7 @@ func main() {
 
 	if len(os.Getenv("TEATERM_DBG_LOG")) > 0 {
 		closeDbgLogger := internal.StartDbgLogger()
+		log.Println("\n\n")
 		defer closeDbgLogger()
 	} else {
 		log.SetOutput(io.Discard)

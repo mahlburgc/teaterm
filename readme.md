@@ -57,6 +57,7 @@ source ~/.zshrc
 - easily open editor with current message log
 - timestamp
 - create log files
+- manual disconnect/reconnect to port fro TUI
 
 ## Planned features
 

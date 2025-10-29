@@ -7,7 +7,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"go.bug.st/serial"
@@ -15,9 +14,13 @@ import (
 )
 
 type (
-	SerialRxMsg      string
-	SerialTxMsg      string
-	PortConnectedMsg struct{ port Port }
+	SerialRxMsg            string
+	SerialTxMsg            string
+	PortReconnectStatusMsg struct {
+		port Port
+		ok   bool
+	}
+	PortManualConnectMsg bool
 )
 
 // Port is an interface that matches io.ReadWriteCloser.
@@ -60,23 +63,15 @@ func OpenPort(portname string) (Port, serial.Mode) {
 	return port, mode
 }
 
-// Try to reconnect to the serial port we connected to on startup.
+// Returns a tea command to that tries to reconnect to the serial port we connected
+// to on startup.
 func reconnectToPort(selectedPort string, selectedMode *serial.Mode) tea.Cmd {
 	return func() tea.Msg {
-		var port serial.Port
-		var err error
-
-		for {
-			port, err = serial.Open(selectedPort, selectedMode)
-			if err != nil {
-				time.Sleep(1000)
-			} else {
-				break
-			}
+		port, err := serial.Open(selectedPort, selectedMode)
+		if err != nil {
+			log.Println("Failed to reconnect to port " + selectedPort)
 		}
-		return PortConnectedMsg{
-			port: port,
-		}
+		return PortReconnectStatusMsg{port: port, ok: err == nil}
 	}
 }
 

@@ -1,7 +1,6 @@
 package internal
 
 import (
-	"log"
 	"os"
 	"os/exec"
 	"strings"
@@ -20,6 +19,11 @@ func HandleKeys(m *model, key tea.KeyMsg) tea.Cmd {
 	switch key.String() {
 	case "ctrl+e":
 		return openEditorCmd(m.serMsg)
+
+	case "ctrl+x":
+		return func() tea.Msg {
+			return PortManualConnectMsg(true)
+		}
 
 	case "ctrl+left":
 		m.serialVp.ScrollLeft(3)
@@ -48,7 +52,6 @@ func HandleKeys(m *model, key tea.KeyMsg) tea.Cmd {
 
 	switch key.Type {
 	case tea.KeyCtrlC, tea.KeyEsc:
-		log.Printf("cmd hist on quit %v", m.cmdhist.GetCmdHist())
 		StoreConfig(m.cmdhist.GetCmdHist())
 		return tea.Quit
 

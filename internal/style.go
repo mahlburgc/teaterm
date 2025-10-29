@@ -5,6 +5,7 @@ import "github.com/charmbracelet/lipgloss"
 var (
 	CursorStyle             = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 	ConnectSymbolStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("77"))
+	DisconnectedSymbolStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("124"))
 	FocusedPlaceholderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	FocusedBorderStyle      = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("242"))
 	BlurredBorderStyle      = FocusedBorderStyle

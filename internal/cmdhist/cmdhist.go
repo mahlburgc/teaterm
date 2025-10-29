@@ -177,7 +177,6 @@ func (m *Model) updateCmdHistView() (c tea.Cmd) {
 			cmdHistLines[i] = zone.Mark(strconv.Itoa(i), cmd)
 		}
 	}
-	log.Printf("Testtest %v", cmdHistLines)
 	m.Vp.SetContent(lipgloss.NewStyle().Render(strings.Join(cmdHistLines, "\n")))
 
 	return c
@@ -196,7 +195,7 @@ func (m *Model) deleteCmd() (c tea.Cmd) {
 }
 
 func (m *Model) ResetVp() (c tea.Cmd) {
-	log.Printf("reset cmd vp: vp height, msg len: %v, %v\n", m.Vp.Height, len(m.cmdHist))
+	// log.Printf("reset cmd vp: vp height, msg len: %v, %v\n", m.Vp.Height, len(m.cmdHist))
 
 	if m.Vp.Height > 0 {
 		m.cmdHistIndex = len(m.cmdHist)
