@@ -386,7 +386,7 @@ func HandleSerialRxMsg(m *model, msg string) tea.Cmd {
 		line.WriteString(fmt.Sprintf("[%s] ", t))
 	}
 	//line.WriteString("< ")
-	line.WriteString(string(msg))
+	line.WriteString(fmt.Sprintf("%q", string(msg))) // also print escape characters
 
 	// TODO set serial message histrory limit, remove oldest if exceed
 	m.serMsg = append(m.serMsg, line.String())
