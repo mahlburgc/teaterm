@@ -80,6 +80,9 @@ func handleEnterKey(m *model) tea.Cmd {
 		return nil
 	}
 
+	// Add command to history.
+	m.cmdhist.AddCmd(userInput)
+
 	return SendToPort(*m.port, userInput)
 }
 

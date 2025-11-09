@@ -99,7 +99,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 
 		if msg.Action == tea.MouseActionRelease {
-			return m, SendCmdExecutedMsg(m.cmdHist[m.cmdHistIndex])
+			c = SendCmdExecutedMsg(m.cmdHist[m.cmdHistIndex])
+			m.cmdHistIndex = len(m.cmdHist)
+			m.updateCmdHistView()
+			return m, c
 		}
 
 		// x, y := zone.Get("confirm").Pos() can be used to get the relative

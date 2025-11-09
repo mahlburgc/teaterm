@@ -407,9 +407,6 @@ func HandleSerialRxMsg(m *model, msg string) tea.Cmd {
 // A serial messages was successfully sent to the serial port.
 // So we log the serial message to the message view and the command view.
 func HandleSerialTxMsg(m *model, msg string) {
-	// Add command to history.
-	m.cmdhist.AddCmd(msg)
-
 	// Reset input text area.
 	m.inputTa.Reset()
 
