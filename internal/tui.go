@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/icza/gox/stringsx"
 	zone "github.com/lrstanley/bubblezone"
 	"github.com/mahlburgc/teaterm/internal/cmdhist"
 	"go.bug.st/serial"
@@ -43,10 +44,11 @@ type model struct {
 	conStatus     int
 	spinner       spinner.Model
 	serialLog     *log.Logger
+	showEscapes   bool
 }
 
 func initialModel(port *io.ReadWriteCloser, showTimestamp bool, cmdHist []string,
-	selectedPort string, selectedMode *serial.Mode, serialLog *log.Logger,
+	selectedPort string, selectedMode *serial.Mode, serialLog *log.Logger, showEscapes bool,
 ) model {
 	// Input text area contains text field to send commands to the serial port.
 	inputTa := textarea.New()
@@ -107,6 +109,7 @@ func initialModel(port *io.ReadWriteCloser, showTimestamp bool, cmdHist []string
 		spinner:       reconnectSpinner,
 		restartApp:    false,
 		serialLog:     serialLog,
+		showEscapes:   showEscapes,
 	}
 }
 
@@ -386,7 +389,13 @@ func HandleSerialRxMsg(m *model, msg string) tea.Cmd {
 		line.WriteString(fmt.Sprintf("[%s] ", t))
 	}
 	//line.WriteString("< ")
-	line.WriteString(fmt.Sprintf("%q", string(msg))) // also print escape characters
+	if m.showEscapes {
+		// also print escape characters
+		line.WriteString(fmt.Sprintf("%q", msg))
+	} else {
+		// ignore escape characters
+		line.WriteString(stringsx.Clean(msg))
+	}
 
 	// TODO set serial message histrory limit, remove oldest if exceed
 	m.serMsg = append(m.serMsg, line.String())
@@ -473,7 +482,7 @@ func RunTui(port *io.ReadWriteCloser, mode serial.Mode, flags Flags, config Conf
 	zone.NewGlobal()
 
 	// log.Printf("Cmd history on startup %v\n", config.CmdHistoryLines)
-	m := initialModel(port, flags.Timestamp, config.CmdHistoryLines, flags.Port, &mode, serialLog)
+	m := initialModel(port, flags.Timestamp, config.CmdHistoryLines, flags.Port, &mode, serialLog, flags.ShowEscapes)
 
 	for {
 		p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())

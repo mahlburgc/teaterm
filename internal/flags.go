@@ -8,6 +8,7 @@ type Flags struct {
 	Timestamp   bool
 	Logfile     bool
 	Logfilepath string
+	ShowEscapes bool
 }
 
 // Get all command line arguments.
@@ -17,6 +18,7 @@ func GetFlags() Flags {
 	timestampArg := flag.Bool("t", false, "show timestamp")
 	logfileArg := flag.Bool("log", false, "create log file")
 	logfilePathArg := flag.String("logpath", ".", "specify logfile dir")
+	showEscapesArg := flag.Bool("e", false, "print escape / non ascii charactres")
 
 	flag.Parse()
 
@@ -26,5 +28,6 @@ func GetFlags() Flags {
 		Timestamp:   *timestampArg,
 		Logfile:     *logfileArg,
 		Logfilepath: *logfilePathArg,
+		ShowEscapes: *showEscapesArg,
 	}
 }
