@@ -13,9 +13,9 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/icza/gox/stringsx"
 	zone "github.com/lrstanley/bubblezone"
 	"github.com/mahlburgc/teaterm/internal/cmdhist"
+	"github.com/mahlburgc/teaterm/internal/msglog"
 	"go.bug.st/serial"
 )
 
@@ -28,7 +28,7 @@ const (
 )
 
 type model struct {
-	serialVp      viewport.Model
+	msglog        msglog.Model
 	cmdhist       cmdhist.Model
 	inputTa       textarea.Model
 	serMsg        []string
@@ -43,8 +43,6 @@ type model struct {
 	height        int
 	conStatus     int
 	spinner       spinner.Model
-	serialLog     *log.Logger
-	showEscapes   bool
 }
 
 func initialModel(port *io.ReadWriteCloser, showTimestamp bool, cmdHist []string,
@@ -68,21 +66,11 @@ func initialModel(port *io.ReadWriteCloser, showTimestamp bool, cmdHist []string
 	inputTa.FocusedStyle.Base = FocusedBorderStyle
 	inputTa.BlurredStyle.Base = BlurredBorderStyle
 
-	// Serial viewport contains all sent and received messages.
-	// We will create a viewport without border and later manually
-	// add the border to inject a title into the border.
-	serialVp := viewport.New(30, 5)
-	serialVp.SetContent(`Welcome to teaterm!`)
-	serialVp.Style = lipgloss.NewStyle()
-	// Disable the viewport's default up/down key handling so it doesn't scroll
-	// when we are navigating through the command history.
-	serialVp.KeyMap.Up.SetEnabled(false)
-	serialVp.KeyMap.Down.SetEnabled(false)
-	serialVp.KeyMap.PageUp.SetEnabled(false)
-	serialVp.KeyMap.PageDown.SetEnabled(false)
-
 	// Command viewport contains the command history.
 	cmdhist := cmdhist.New(cmdHist)
+
+	// msglog viewport contains the message log.
+	msglog := msglog.New(showTimestamp, showEscapes, VpTxMsgStyle, serialLog)
 
 	// Spinner symbol runs during port reconnect.
 	reconnectSpinner := spinner.New()
@@ -93,10 +81,9 @@ func initialModel(port *io.ReadWriteCloser, showTimestamp bool, cmdHist []string
 	scanner := bufio.NewScanner(*port)
 
 	return model{
-		serialVp:      serialVp,
+		msglog:        msglog,
 		cmdhist:       cmdhist,
 		inputTa:       inputTa,
-		serMsg:        []string{},
 		err:           nil,
 		port:          port,
 		scanner:       scanner,
@@ -108,8 +95,6 @@ func initialModel(port *io.ReadWriteCloser, showTimestamp bool, cmdHist []string
 		conStatus:     conStatus_connected,
 		spinner:       reconnectSpinner,
 		restartApp:    false,
-		serialLog:     serialLog,
-		showEscapes:   showEscapes,
 	}
 }
 
@@ -127,9 +112,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.cmdhist, cmd = m.cmdhist.Update(msg)
 		cmds = append(cmds, cmd)
 	}
+
+	m.msglog, cmd = m.msglog.Update(msg)
+	cmds = append(cmds, cmd)
 	m.inputTa, cmd = m.inputTa.Update(msg)
 	cmds = append(cmds, cmd)
-	m.serialVp, cmd = m.serialVp.Update(msg)
+	m.msglog.Vp, cmd = m.msglog.Vp.Update(msg)
 	cmds = append(cmds, cmd)
 
 	switch msg := msg.(type) {
@@ -137,15 +125,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		HandleNewWindowSize(&m, msg)
 
 	case tea.KeyMsg:
-		cmd = HandleKeys(&m, msg)
-		cmds = append(cmds, cmd)
+		cmds = append(cmds, HandleKeys(&m, msg))
 
 	case SerialTxMsg:
-		HandleSerialTxMsg(&m, string(msg))
+		m.inputTa.Reset()
+		m.msglog.AddMsg(string(msg), true)
 
 	case SerialRxMsg:
-		cmd = HandleSerialRxMsg(&m, string(msg))
-		cmds = append(cmds, cmd)
+		m.msglog.AddMsg(string(msg), false)
+		cmds = append(cmds, readFromPort(m.scanner))
 
 	case PortReconnectStatusMsg:
 		if msg.ok {
@@ -219,10 +207,11 @@ func (m model) View() string {
 		return fmt.Sprintf("\nWe had some trouble: %v\n\n", m.err)
 	}
 
-	serialVpFooter := fmt.Sprintf("%v, %3.f%%", len(m.serMsg), m.serialVp.ScrollPercent()*100)
-
 	footer := CreateFooter(&m)
-	serialVp := AddBorder(m.serialVp, "Messages", serialVpFooter)
+
+	serialVpFooter := fmt.Sprintf("%v, %3.f%%", m.msglog.GetLen(), m.msglog.GetScrollPercent())
+	serialVp := AddBorder(m.msglog.Vp, "Messages", serialVpFooter)
+
 	cmdVp := AddBorder(m.cmdhist.Vp, "Commands", "")
 
 	// Arrange viewports side by side
@@ -314,7 +303,7 @@ func CreateFooter(m *model) string {
 	if m.cmdhist.GetIndex() != m.cmdhist.GetHistLen() {
 		helpText += " · ctrl+d: del"
 	}
-	if m.serialVp.Height > 0 {
+	if m.msglog.Vp.Height > 0 {
 		helpText += " · ctrl+l: clear"
 	}
 
@@ -346,15 +335,15 @@ func HandleNewWindowSize(m *model, msg tea.WindowSizeMsg) {
 	borderWidth, borderHight := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).GetFrameSize()
 
-	m.serialVp.Width = m.width / 4 * 3
-	m.cmdhist.Vp.Width = m.width - m.serialVp.Width
+	m.msglog.Vp.Width = m.width / 4 * 3
+	m.cmdhist.Vp.Width = m.width - m.msglog.Vp.Width
 
-	m.serialVp.Width -= borderHight
+	m.msglog.Vp.Width -= borderHight
 	m.cmdhist.Vp.Width -= borderWidth
 
 	const footerHight = 1
-	m.serialVp.Height = m.height - lipgloss.Height(m.inputTa.View()) - borderHight - footerHight
-	m.cmdhist.Vp.Height = m.serialVp.Height
+	m.msglog.Vp.Height = m.height - lipgloss.Height(m.inputTa.View()) - borderHight - footerHight
+	m.cmdhist.Vp.Height = m.msglog.Vp.Height
 
 	m.inputTa.SetWidth(m.width)
 
@@ -363,85 +352,8 @@ func HandleNewWindowSize(m *model, msg tea.WindowSizeMsg) {
 	// log.Printf("cmd vp w, h:     %v, %v\n", m.cmdhist.Vp.Width, m.cmdhist.Vp.Height)
 	// log.Printf("input ta w, h:   %v, %v\n", m.inputTa.Width(), lipgloss.Height(m.inputTa.View()))
 
-	updateVp(&m.serialVp, &m.serMsg, false, true)
+	m.msglog.UpdateVp()
 	m.cmdhist.ResetVp()
-}
-
-func updateVp(vp *viewport.Model, content *[]string, updateWidth bool, gotoBottom bool) {
-	// log.Printf("reset vp: vp height, msg len:   %v, %v\n", vp.Height, len(*content))
-
-	if vp.Height > 0 && len(*content) > 0 {
-		if updateWidth {
-			vp.SetContent(lipgloss.NewStyle().Width(vp.Width).
-				Render(strings.Join(*content, "\n")))
-		} else {
-			vp.SetContent(lipgloss.NewStyle().Render(strings.Join(*content, "\n")))
-		}
-		if gotoBottom {
-			vp.GotoBottom()
-		}
-	}
-}
-
-// Handle incomming serial messages.
-func HandleSerialRxMsg(m *model, msg string) tea.Cmd {
-	var line strings.Builder
-
-	if m.showTimestamp {
-		t := time.Now().Format("15:04:05.000")
-		line.WriteString(fmt.Sprintf("[%s] ", t))
-	}
-	//line.WriteString("< ")
-	if m.showEscapes {
-		// also print escape characters
-		line.WriteString(fmt.Sprintf("%q", msg))
-	} else {
-		// ignore escape characters
-		line.WriteString(stringsx.Clean(msg))
-	}
-
-	// TODO set serial message histrory limit, remove oldest if exceed
-	m.serMsg = append(m.serMsg, line.String())
-
-	// Add command to serial logger, if logger is active
-	if m.serialLog != nil {
-		m.serialLog.Println(line.String())
-	}
-
-	// reset viewport only if we did not scrolled up in msg history
-	goToBottom := m.serialVp.ScrollPercent() == 1
-	updateVp(&m.serialVp, &m.serMsg, false, goToBottom)
-
-	// restart msg scanner
-	return readFromPort(m.scanner)
-}
-
-// A serial messages was successfully sent to the serial port.
-// So we log the serial message to the message view and the command view.
-func HandleSerialTxMsg(m *model, msg string) {
-	// Reset input text area.
-	m.inputTa.Reset()
-
-	// Log the sent message to the viewport
-	var line strings.Builder
-	if m.showTimestamp {
-		t := time.Now().Format("15:04:05.000")
-		line.WriteString(fmt.Sprintf("[%s] ", t))
-	}
-	// line.WriteString("> ")
-	line.WriteString(msg)
-
-	// Add command to serial logger, if logger is active
-	if m.serialLog != nil {
-		m.serialLog.Println(line.String())
-	}
-
-	// TODO set serial message histrory limit, remove oldest if exceed
-	m.serMsg = append(m.serMsg, VpTxMsgStyle.Render(line.String())) // TODO directly use style for var()
-
-	// reset viewport only if we did not scrolled up in msg history
-	goToBottom := m.serialVp.ScrollPercent() == 1
-	updateVp(&m.serialVp, &m.serMsg, false, goToBottom)
 }
 
 // Handle serial port errors.

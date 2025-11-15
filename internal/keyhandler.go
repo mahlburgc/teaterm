@@ -24,30 +24,6 @@ func HandleKeys(m *model, key tea.KeyMsg) tea.Cmd {
 		return func() tea.Msg {
 			return PortManualConnectMsg(true)
 		}
-
-	case "ctrl+left":
-		m.serialVp.ScrollLeft(3)
-		return nil
-
-	case "ctrl+right":
-		m.serialVp.ScrollRight(3)
-		return nil
-
-	case "ctrl+up":
-		m.serialVp.ScrollUp(3)
-		return nil
-
-	case "ctrl+down":
-		m.serialVp.ScrollDown(3)
-		return nil
-
-	case "home":
-		m.serialVp.GotoTop()
-		return nil
-
-	case "end":
-		m.serialVp.GotoBottom()
-		return nil
 	}
 
 	switch key.Type {
@@ -55,24 +31,9 @@ func HandleKeys(m *model, key tea.KeyMsg) tea.Cmd {
 		StoreConfig(m.cmdhist.GetCmdHist())
 		return tea.Quit
 
-	case tea.KeyPgUp:
-		m.serialVp.ScrollUp(10)
-		return nil
-
-	case tea.KeyPgDown:
-		m.serialVp.ScrollDown(10)
-		return nil
-
 	case tea.KeyEnter:
 		return handleEnterKey(m)
 
-	case tea.KeyCtrlL:
-		if m.serialVp.Height > 0 {
-			m.serMsg = nil /* reset serial message log */
-			m.serialVp.SetContent("")
-			m.serialVp.GotoBottom()
-		}
-		return nil
 	}
 	return nil
 }
