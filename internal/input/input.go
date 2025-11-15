@@ -1,0 +1,65 @@
+package input
+
+import (
+	"github.com/charmbracelet/bubbles/textarea"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/mahlburgc/teaterm/internal/styles"
+)
+
+type Model struct {
+	Ta textarea.Model
+}
+
+// New creates a new model with default settings.
+// Input text area contains text field to send commands to the serial port.
+func New() (m Model) {
+	m.Ta = textarea.New()
+	m.Ta.SetWidth(30)
+	m.Ta.SetHeight(1)
+	m.Ta.Placeholder = "Send a message..."
+	m.Ta.Focus()
+	m.Ta.Prompt = "> "
+	m.Ta.CharLimit = 256
+	m.Ta.ShowLineNumbers = false
+	m.Ta.KeyMap.InsertNewline.SetEnabled(false)
+	m.Ta.Cursor.Style = styles.CursorStyle
+	m.Ta.FocusedStyle.CursorLine = lipgloss.NewStyle()
+	m.Ta.FocusedStyle.Placeholder = styles.FocusedPlaceholderStyle
+	m.Ta.FocusedStyle.Prompt = styles.FocusedPromtStyle
+	m.Ta.BlurredStyle.Prompt = styles.BlurredPromtStyle
+	m.Ta.FocusedStyle.Base = styles.FocusedBorderStyle
+	m.Ta.BlurredStyle.Base = styles.BlurredBorderStyle
+
+	return m
+}
+
+func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
+	return m, nil
+}
+
+func (m Model) View() string {
+	return m.Ta.View()
+}
+
+func (m *Model) SetValue(value string) {
+	m.Ta.SetValue(value)
+}
+
+func (m *Model) SetDisconnectet() {
+	m.Ta.Reset()
+	m.Ta.Blur()
+	m.Ta.Placeholder = "Disconnected"
+}
+
+func (m *Model) SetConnected() {
+	m.Ta.Reset()
+	m.Ta.Blur()
+	m.Ta.Placeholder = "Dis"
+}
+
+func (m *Model) SetReconnecting() {
+	m.Ta.Reset()
+	m.Ta.Blur()
+	m.Ta.Placeholder = "Disconnected"
+}

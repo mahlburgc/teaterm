@@ -3,9 +3,12 @@ package msglog
 import (
 	"fmt"
 	"log"
+	"os"
+	"os/exec"
 	"strings"
 	"time"
 
+	"github.com/acarl005/stripansi"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -21,6 +24,11 @@ type Model struct {
 	txPrefix      string
 	rxPrefix      string
 	showEscapes   bool
+}
+
+// This message is sent when the editor is closed.
+type EditorFinishedMsg struct {
+	err error
 }
 
 // New creates a new model with default settings.
@@ -78,6 +86,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		case "end":
 			m.Vp.GotoBottom()
 			return m, nil
+
+		case "ctrl+e":
+			return m, openEditorCmd(m.log)
 		}
 
 		switch msg.Type {
@@ -164,4 +175,51 @@ func (m Model) GetLen() int {
 
 func (m Model) GetScrollPercent() float64 {
 	return m.Vp.ScrollPercent() * 100
+}
+
+// openEditorCmd creates a tea.Cmd that runs the editor.
+func openEditorCmd(content []string) tea.Cmd {
+	// Get the editor from the environment variable. Default to vim.
+	editor := os.Getenv("EDITOR")
+	if editor == "" {
+		editor = "vi"
+	}
+
+	// Create a temporary file to store the content.
+	tmpFile, err := os.CreateTemp("", "bubbletea-edit-*.txt")
+	if err != nil {
+		return func() tea.Msg {
+			return EditorFinishedMsg{err: err}
+		}
+	}
+
+	// Write the viewport content to the temp file.
+	if _, err := tmpFile.WriteString(stripansi.Strip(strings.Join(content, "\n") + "\n")); err != nil {
+		return func() tea.Msg {
+			return EditorFinishedMsg{err: err}
+		}
+	}
+
+	// Close the file so the editor can access it.
+	if err := tmpFile.Close(); err != nil {
+		return func() tea.Msg {
+			return EditorFinishedMsg{err: err}
+		}
+	}
+
+	// This is the command that will be executed.
+	c := exec.Command(editor, tmpFile.Name())
+
+	// The magic is here: tea.ExecProcess handles suspending the Bubble Tea
+	// app, running the command, and then sending a message back.
+	return tea.ExecProcess(c, func(err error) tea.Msg {
+		if err != nil {
+			return EditorFinishedMsg{err: err}
+		}
+
+		// Clean up the temporary file.
+		err = os.Remove(tmpFile.Name())
+
+		return EditorFinishedMsg{err: err}
+	})
 }
