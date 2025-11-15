@@ -314,6 +314,9 @@ func CreateFooter(m *model) string {
 	if m.cmdhist.GetIndex() != m.cmdhist.GetHistLen() {
 		helpText += " · ctrl+d: del"
 	}
+	if m.serialVp.Height > 0 {
+		helpText += " · ctrl+l: clear"
+	}
 
 	var connectionSymbol string
 

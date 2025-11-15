@@ -65,8 +65,15 @@ func HandleKeys(m *model, key tea.KeyMsg) tea.Cmd {
 
 	case tea.KeyEnter:
 		return handleEnterKey(m)
-	}
 
+	case tea.KeyCtrlL:
+		if m.serialVp.Height > 0 {
+			m.serMsg = nil /* reset serial message log */
+			m.serialVp.SetContent("")
+			m.serialVp.GotoBottom()
+		}
+		return nil
+	}
 	return nil
 }
 
