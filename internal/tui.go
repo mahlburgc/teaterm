@@ -19,7 +19,7 @@ import (
 	"go.bug.st/serial"
 )
 
-type StartMextReconnectTryMsg bool
+type StartNextReconnectTryMsg bool
 
 const (
 	conStatus_disconnected = iota
@@ -93,9 +93,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.msglog, cmd = m.msglog.Update(msg)
 	cmds = append(cmds, cmd)
 
-	m.input.Ta, cmd = m.input.Ta.Update(msg)
+	m.input, cmd = m.input.Update(msg)
 	cmds = append(cmds, cmd)
-	m.msglog.Vp, cmd = m.msglog.Vp.Update(msg)
+
+	m.msglog, cmd = m.msglog.Update(msg)
 	cmds = append(cmds, cmd)
 
 	switch msg := msg.(type) {
@@ -106,12 +107,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, HandleKeys(&m, msg))
 
 	case SerialTxMsg:
-		m.input.Ta.Reset()
+		m.input.Reset()
+		m.cmdhist.AddCmd(string(msg))
 		m.msglog.AddMsg(string(msg), true)
 
 	case SerialRxMsg:
 		m.msglog.AddMsg(string(msg), false)
 		cmds = append(cmds, readFromPort(m.scanner))
+
+	case input.CmdExecuted:
+		cmds = append(cmds, SendToPort(*m.port, msg.Cmd))
 
 	case PortReconnectStatusMsg:
 		if msg.ok {
@@ -120,13 +125,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			cmd := func() tea.Msg {
 				time.Sleep(1 * time.Second)
-				return StartMextReconnectTryMsg(true)
+				return StartNextReconnectTryMsg(true)
 			}
 			cmds = append(cmds, cmd)
 
 		}
 
-	case StartMextReconnectTryMsg:
+	case StartNextReconnectTryMsg:
 		if m.conStatus != conStatus_disconnected {
 			reconnectCmd, spinnerCmd := PrepareReconnect(&m)
 			cmds = append(cmds, reconnectCmd, spinnerCmd)
@@ -163,8 +168,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.input.SetValue(msg.Cmd)
 
 		case cmdhist.CmdExecuted:
-			cmd = SendToPort(*m.port, msg.Cmd)
-			cmds = append(cmds, cmd)
+			cmds = append(cmds, SendToPort(*m.port, msg.Cmd))
 		}
 
 	case msglog.EditorFinishedMsg:
@@ -285,11 +289,9 @@ func HandleSerialPortErr(m *model, msg *serial.PortError) (tea.Cmd, tea.Cmd) {
 
 // Prepare TUI to reconnect
 func PrepareReconnect(m *model) (tea.Cmd, tea.Cmd) {
-	m.input.Ta.Reset()
-	m.input.Ta.Blur()
+	m.input.SetReconnecting()
 	m.conStatus = conStatus_connecting
 	(*m.port).Close()
-	m.input.Ta.Placeholder = "Reconnecting..."
 	reconnectCmd := reconnectToPort(m.selectedPort, m.selectedMode)
 	spinnerCmd := m.spinner.Tick
 	return reconnectCmd, spinnerCmd

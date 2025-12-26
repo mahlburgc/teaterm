@@ -7,6 +7,10 @@ import (
 	"github.com/mahlburgc/teaterm/internal/styles"
 )
 
+type CmdExecuted struct {
+	Cmd string
+}
+
 type Model struct {
 	Ta textarea.Model
 }
@@ -35,6 +39,27 @@ func New() (m Model) {
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
+	var cmd tea.Cmd
+
+	m.Ta, cmd = m.Ta.Update(msg)
+	if cmd != nil {
+		return m, cmd
+	}
+
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyEnter:
+			if m.Ta.Value() == "" {
+				return m, nil
+			}
+			return m, func() tea.Msg {
+				return CmdExecuted{
+					Cmd: m.Ta.Value(),
+				}
+			}
+		}
+	}
 	return m, nil
 }
 
@@ -54,12 +79,16 @@ func (m *Model) SetDisconnectet() {
 
 func (m *Model) SetConnected() {
 	m.Ta.Reset()
-	m.Ta.Blur()
-	m.Ta.Placeholder = "Dis"
+	m.Ta.Focused()
+	m.Ta.Placeholder = "Send a message..."
 }
 
 func (m *Model) SetReconnecting() {
 	m.Ta.Reset()
 	m.Ta.Blur()
-	m.Ta.Placeholder = "Disconnected"
+	m.Ta.Placeholder = "Connecting..."
+}
+
+func (m *Model) Reset() {
+	m.SetConnected()
 }

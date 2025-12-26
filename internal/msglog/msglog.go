@@ -59,6 +59,12 @@ func New(showTimestamp bool, showEscapes bool, sendStyle lipgloss.Style, serialL
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
+	var cmd tea.Cmd
+	m.Vp, cmd = m.Vp.Update(msg)
+	if cmd != nil {
+		return m, cmd
+	}
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 
