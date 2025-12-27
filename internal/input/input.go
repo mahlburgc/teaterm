@@ -4,6 +4,7 @@ import (
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mahlburgc/teaterm/events"
 	"github.com/mahlburgc/teaterm/internal/styles"
 )
 
@@ -59,7 +60,14 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				}
 			}
 		}
+
+	case events.SerialTxMsg:
+		m.Reset()
+
+	case events.HistCmdSelected:
+		m.SetValue(string(msg))
 	}
+
 	return m, nil
 }
 

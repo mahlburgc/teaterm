@@ -12,6 +12,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	zone "github.com/lrstanley/bubblezone"
+	"github.com/mahlburgc/teaterm/events"
 	"github.com/mahlburgc/teaterm/internal/cmdhist"
 	"github.com/mahlburgc/teaterm/internal/input"
 	"github.com/mahlburgc/teaterm/internal/msglog"
@@ -96,9 +97,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.input, cmd = m.input.Update(msg)
 	cmds = append(cmds, cmd)
 
-	m.msglog, cmd = m.msglog.Update(msg)
-	cmds = append(cmds, cmd)
-
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		HandleNewWindowSize(&m, msg)
@@ -106,13 +104,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		cmds = append(cmds, HandleKeys(&m, msg))
 
-	case SerialTxMsg:
-		m.input.Reset()
-		m.cmdhist.AddCmd(string(msg))
-		m.msglog.AddMsg(string(msg), true)
-
-	case SerialRxMsg:
-		m.msglog.AddMsg(string(msg), false)
+	case events.SerialRxMsg:
 		cmds = append(cmds, readFromPort(m.scanner))
 
 	case input.CmdExecuted:
@@ -162,14 +154,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, cmd)
 		}
 
-	case cmdhist.CmdHistMsg:
-		switch msg.Type {
-		case cmdhist.CmdSelected:
-			m.input.SetValue(msg.Cmd)
-
-		case cmdhist.CmdExecuted:
-			cmds = append(cmds, SendToPort(*m.port, msg.Cmd))
-		}
+	case events.HistCmdExecuted:
+		cmds = append(cmds, SendToPort(*m.port, string(msg)))
 
 	case msglog.EditorFinishedMsg:
 		// workaround bubbletea v1 bug: after executing external command,
@@ -214,6 +200,22 @@ func (m model) View() string {
 		lipgloss.Center,
 		lipgloss.Center,
 		screen))
+}
+
+func HandleKeys(m *model, key tea.KeyMsg) tea.Cmd {
+	switch key.String() {
+	case "ctrl+x":
+		return func() tea.Msg {
+			return PortManualConnectMsg(true)
+		}
+	}
+
+	switch key.Type {
+	case tea.KeyCtrlC, tea.KeyEsc:
+		StoreConfig(m.cmdhist.GetCmdHist())
+		return tea.Quit
+	}
+	return nil
 }
 
 // Returns the footer string

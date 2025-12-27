@@ -13,6 +13,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/icza/gox/stringsx"
+	"github.com/mahlburgc/teaterm/events"
 )
 
 type Model struct {
@@ -66,32 +67,33 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	}
 
 	switch msg := msg.(type) {
+
+	case events.SerialTxMsg:
+		m.AddMsg(string(msg), true)
+
+	case events.SerialRxMsg:
+		m.AddMsg(string(msg), false)
+
 	case tea.KeyMsg:
 
 		switch msg.String() {
 		case "ctrl+left":
 			m.Vp.ScrollLeft(3)
-			return m, nil
 
 		case "ctrl+right":
 			m.Vp.ScrollRight(3)
-			return m, nil
 
 		case "ctrl+up":
 			m.Vp.ScrollUp(3)
-			return m, nil
 
 		case "ctrl+down":
 			m.Vp.ScrollDown(3)
-			return m, nil
 
 		case "home":
 			m.Vp.GotoTop()
-			return m, nil
 
 		case "end":
 			m.Vp.GotoBottom()
-			return m, nil
 
 		case "ctrl+e":
 			return m, openEditorCmd(m.log)
@@ -100,11 +102,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		switch msg.Type {
 		case tea.KeyPgUp:
 			m.Vp.ScrollUp(10)
-			return m, nil
 
 		case tea.KeyPgDown:
 			m.Vp.ScrollDown(10)
-			return m, nil
 
 		case tea.KeyCtrlL:
 			if m.Vp.Height > 0 {
@@ -112,11 +112,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				m.Vp.SetContent("")
 				m.Vp.GotoBottom()
 			}
-			return m, nil
 		}
-
-	case tea.MouseMsg:
-		return m, nil
 
 	default:
 		return m, nil

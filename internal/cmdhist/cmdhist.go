@@ -9,19 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	zone "github.com/lrstanley/bubblezone"
-)
-
-// This message is sent when a cmd was selected.
-type CmdHistMsg struct {
-	Type MsgType
-	Cmd  string
-}
-
-type MsgType int
-
-const (
-	CmdSelected MsgType = 0
-	CmdExecuted MsgType = 1
+	"github.com/mahlburgc/teaterm/events"
 )
 
 type Model struct {
@@ -37,6 +25,12 @@ func New(cmdHist []string) (m Model) {
 	m.Vp = viewport.New(30, 5)
 	m.SelectStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 	m.cmdHistIndex = len(m.cmdHist)
+
+	// Disable the viewport's default up/down key handling.
+	m.Vp.KeyMap.Up.SetEnabled(false)
+	m.Vp.KeyMap.Down.SetEnabled(false)
+	m.Vp.KeyMap.PageUp.SetEnabled(false)
+	m.Vp.KeyMap.PageDown.SetEnabled(false)
 
 	if cmdHist == nil {
 		return m
@@ -59,7 +53,15 @@ func (m Model) GetHistLen() int {
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
+	var cmd tea.Cmd
+
+	// m.Vp, cmd = m.Vp.Update(msg) is currently not called because it breaks the manual vp handling
+
 	switch msg := msg.(type) {
+
+	case events.SerialTxMsg:
+		m.AddCmd(string(msg))
+
 	case tea.KeyMsg:
 		switch msg.Type {
 
@@ -83,56 +85,49 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			}
 		}
 
-		var c tea.Cmd
-		c = m.updateCmdHistView()
+		cmd = m.updateCmdHistView()
 
 		if m.cmdHistIndex == len(m.cmdHist) {
-			return m, c
+			return m, cmd
 		}
 
 		if msg.Button != tea.MouseButtonLeft {
-			return m, c
+			return m, cmd
 		}
 
 		if msg.Action == tea.MouseActionPress {
-			return m, c
+			return m, cmd
 		}
 
 		if msg.Action == tea.MouseActionRelease {
-			c = SendCmdExecutedMsg(m.cmdHist[m.cmdHistIndex])
+			cmd = SendCmdExecutedMsg(m.cmdHist[m.cmdHistIndex])
 			m.cmdHistIndex = len(m.cmdHist)
 			m.updateCmdHistView()
-			return m, c
+			return m, cmd
 		}
 
 		// x, y := zone.Get("confirm").Pos() can be used to get the relative
 		// coordinates within the zone. Useful if you need to move a cursor in a
 		// input box as an example.
 
-		return m, nil
-
 	default:
 		return m, nil
 	}
+
+	return m, nil
 }
 
 // Returns a Tea command to send a message with the mouse selected cmd to the event loop.
 func SendCmdSelectedMsg(cmd string) tea.Cmd {
 	return func() tea.Msg {
-		return CmdHistMsg{
-			Type: CmdSelected,
-			Cmd:  cmd,
-		}
+		return events.HistCmdSelected(cmd)
 	}
 }
 
 // Returns a Tea command to send a message with the arrow selected cmd to the event loop.
 func SendCmdExecutedMsg(cmd string) tea.Cmd {
 	return func() tea.Msg {
-		return CmdHistMsg{
-			Type: CmdExecuted,
-			Cmd:  cmd,
-		}
+		return events.HistCmdExecuted(cmd)
 	}
 }
 

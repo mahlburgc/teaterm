@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/mahlburgc/teaterm/events"
 )
 
 // Returns a function to close a specific logger and check for errors.
@@ -39,7 +40,7 @@ func StartDbgLogger() (close func()) {
 // Log messsage type to debug file
 func DbgLogMsgType(msg any) {
 	switch msg := msg.(type) {
-	case cursor.BlinkMsg, spinner.TickMsg, SerialRxMsg:
+	case cursor.BlinkMsg, spinner.TickMsg, events.SerialRxMsg:
 		// avoid logging on spamming messages
 	default:
 		log.Printf("Update Msg: Type: %T Value: %v\n", msg, msg)

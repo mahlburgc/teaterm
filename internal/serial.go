@@ -9,13 +9,12 @@ import (
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/mahlburgc/teaterm/events"
 	"go.bug.st/serial"
 	"go.bug.st/serial/enumerator"
 )
 
 type (
-	SerialRxMsg            string
-	SerialTxMsg            string
 	PortReconnectStatusMsg struct {
 		port Port
 		ok   bool
@@ -82,7 +81,7 @@ func readFromPort(scanner *bufio.Scanner) tea.Cmd {
 		log.Println("Starting read from port")
 		for scanner.Scan() {
 			line := scanner.Text()
-			return SerialRxMsg(line)
+			return events.SerialRxMsg(line)
 		}
 
 		if err := scanner.Err(); err != nil {
@@ -107,6 +106,6 @@ func SendToPort(port Port, msg string) tea.Cmd {
 				err: err,
 			}
 		}
-		return SerialTxMsg(msg)
+		return events.SerialTxMsg(msg)
 	}
 }
