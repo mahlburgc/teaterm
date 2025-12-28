@@ -14,6 +14,7 @@ import (
 	zone "github.com/lrstanley/bubblezone"
 	"github.com/mahlburgc/teaterm/events"
 	"github.com/mahlburgc/teaterm/internal/cmdhist"
+	"github.com/mahlburgc/teaterm/internal/footer"
 	"github.com/mahlburgc/teaterm/internal/input"
 	"github.com/mahlburgc/teaterm/internal/msglog"
 	"github.com/mahlburgc/teaterm/internal/styles"
@@ -32,6 +33,7 @@ type model struct {
 	msglog       msglog.Model
 	cmdhist      cmdhist.Model
 	input        input.Model
+	footer       footer.Model
 	err          error
 	port         *io.ReadWriteCloser
 	scanner      *bufio.Scanner
@@ -50,6 +52,7 @@ func initialModel(port *io.ReadWriteCloser, showTimestamp bool, cmdHist []string
 	input := input.New()
 	cmdhist := cmdhist.New(cmdHist)
 	msglog := msglog.New(showTimestamp, showEscapes, styles.VpTxMsgStyle, serialLog)
+	footer := footer.New()
 
 	// Spinner symbol runs during port reconnect.
 	reconnectSpinner := spinner.New()
@@ -63,6 +66,7 @@ func initialModel(port *io.ReadWriteCloser, showTimestamp bool, cmdHist []string
 		msglog:       msglog,
 		cmdhist:      cmdhist,
 		input:        input,
+		footer:       footer,
 		err:          nil,
 		port:         port,
 		scanner:      scanner,
@@ -173,8 +177,6 @@ func (m model) View() string {
 		return fmt.Sprintf("\nWe had some trouble: %v\n\n", m.err)
 	}
 
-	footer := CreateFooter(&m)
-
 	serialVpFooter := fmt.Sprintf("%v, %3.f%%", m.msglog.GetLen(), m.msglog.GetScrollPercent())
 	serialVp := styles.AddBorder(m.msglog.Vp, "Messages", serialVpFooter)
 
@@ -191,7 +193,7 @@ func (m model) View() string {
 		lipgloss.Left,
 		viewports,
 		m.input.View(),
-		footer,
+		m.footer.View(m.selectedPort, m.conStatus, m.spinner),
 	)
 
 	return zone.Scan(lipgloss.Place(
@@ -218,37 +220,6 @@ func HandleKeys(m *model, key tea.KeyMsg) tea.Cmd {
 	return nil
 }
 
-// Returns the footer string
-func CreateFooter(m *model) string {
-	helpText := m.selectedPort + " | ↑/↓: cmds · PgUp/PgDn: scroll · ctrl+e: open editor"
-	if m.cmdhist.GetIndex() != m.cmdhist.GetHistLen() {
-		helpText += " · ctrl+d: del"
-	}
-	if m.msglog.Vp.Height > 0 {
-		helpText += " · ctrl+l: clear"
-	}
-
-	var connectionSymbol string
-
-	switch m.conStatus {
-	case conStatus_connected:
-		connectionSymbol = fmt.Sprintf(" %s ", styles.ConnectSymbolStyle.Render("●"))
-		helpText += " · ctrl+x: disconnect"
-
-	case conStatus_disconnected:
-		connectionSymbol = fmt.Sprintf(" %s ", styles.DisconnectedSymbolStyle.Render("●"))
-		helpText += " · ctrl+x: connect"
-
-	case conStatus_connecting:
-		connectionSymbol = fmt.Sprintf(" %s", m.spinner.View())
-		helpText += " · ctrl+x: disconnect"
-	}
-	connectionSymbol = zone.Mark("consymbol", connectionSymbol)
-
-	return lipgloss.NewStyle().MaxWidth(m.input.Ta.Width()). // TODO check width
-									Render(connectionSymbol + styles.FooterStyle.Render(helpText))
-}
-
 func HandleNewWindowSize(m *model, msg tea.WindowSizeMsg) {
 	m.width = msg.Width
 	m.height = msg.Height
@@ -263,6 +234,8 @@ func HandleNewWindowSize(m *model, msg tea.WindowSizeMsg) {
 	m.cmdhist.Vp.Width -= borderWidth
 
 	const footerHight = 1
+	m.footer.SetWidth(m.width)
+
 	m.msglog.Vp.Height = m.height - lipgloss.Height(m.input.View()) - borderHight - footerHight
 	m.cmdhist.Vp.Height = m.msglog.Vp.Height
 
