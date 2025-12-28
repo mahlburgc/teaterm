@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/mahlburgc/teaterm/internal"
+	"github.com/mahlburgc/teaterm/internal/session"
 	"go.bug.st/serial"
 )
 
@@ -14,13 +15,13 @@ func main() {
 	flags := internal.GetFlags()
 
 	if flags.List {
-		internal.ListPorts()
+		session.ListPorts()
 		return
 	}
 
 	if len(os.Getenv("TEATERM_DBG_LOG")) > 0 {
 		closeDbgLogger := internal.StartDbgLogger()
-		log.Println("\n\n")
+		log.Print("\n\n")
 		defer closeDbgLogger()
 	} else {
 		log.SetOutput(io.Discard)
@@ -31,7 +32,7 @@ func main() {
 	if len(os.Getenv("TEATERM_MOCK_PORT")) > 0 {
 		initialPort, mode = internal.OpenFakePort()
 	} else {
-		initialPort, mode = internal.OpenPort(flags.Port)
+		initialPort, mode = session.OpenPort(flags.Port)
 	}
 
 	// During program execution it might happen that the serial port is closed and opened

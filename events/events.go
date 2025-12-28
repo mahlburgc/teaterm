@@ -6,10 +6,13 @@ package events
 type SerialTxMsg string
 
 // Indicates data was received from the serial port.
-type SerialRxMsg string
+type SerialRxMsgReceived string
 
 // Indicates a command from the command history was selected.
 type HistCmdSelected string
 
-// Indicates a command from the command history was executed.
-type HistCmdExecuted string
+// Indicates that a messages should be transmitted
+type SendMsg string // TODO find better naming
+
+// Indicates that an error occured
+type ErrMsg error

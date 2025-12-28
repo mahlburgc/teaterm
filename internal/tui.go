@@ -1,13 +1,10 @@
 package internal
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"log"
-	"time"
 
-	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -17,33 +14,21 @@ import (
 	"github.com/mahlburgc/teaterm/internal/footer"
 	"github.com/mahlburgc/teaterm/internal/input"
 	"github.com/mahlburgc/teaterm/internal/msglog"
+	"github.com/mahlburgc/teaterm/internal/session"
 	"github.com/mahlburgc/teaterm/internal/styles"
 	"go.bug.st/serial"
 )
 
-type StartNextReconnectTryMsg bool
-
-const (
-	conStatus_disconnected = iota
-	conStatus_connecting   = iota
-	conStatus_connected    = iota
-)
-
 type model struct {
-	msglog       msglog.Model
-	cmdhist      cmdhist.Model
-	input        input.Model
-	footer       footer.Model
-	err          error
-	port         *io.ReadWriteCloser
-	scanner      *bufio.Scanner
-	selectedPort string
-	selectedMode *serial.Mode
-	restartApp   bool
-	width        int
-	height       int
-	conStatus    int
-	spinner      spinner.Model
+	msglog     msglog.Model
+	cmdhist    cmdhist.Model
+	input      input.Model
+	footer     footer.Model
+	session    session.Model
+	err        error
+	restartApp bool
+	width      int
+	height     int
 }
 
 func initialModel(port *io.ReadWriteCloser, showTimestamp bool, cmdHist []string,
@@ -53,35 +38,23 @@ func initialModel(port *io.ReadWriteCloser, showTimestamp bool, cmdHist []string
 	cmdhist := cmdhist.New(cmdHist)
 	msglog := msglog.New(showTimestamp, showEscapes, styles.VpTxMsgStyle, serialLog)
 	footer := footer.New()
-
-	// Spinner symbol runs during port reconnect.
-	reconnectSpinner := spinner.New()
-	reconnectSpinner.Spinner = spinner.Dot
-	reconnectSpinner.Style = styles.SpinnerStyle
-
-	// Scanner searches for incomming serial messages
-	scanner := bufio.NewScanner(*port)
+	session := session.New(port, selectedPort, selectedMode)
 
 	return model{
-		msglog:       msglog,
-		cmdhist:      cmdhist,
-		input:        input,
-		footer:       footer,
-		err:          nil,
-		port:         port,
-		scanner:      scanner,
-		selectedPort: selectedPort,
-		selectedMode: selectedMode,
-		width:        0,
-		height:       0,
-		conStatus:    conStatus_connected,
-		spinner:      reconnectSpinner,
-		restartApp:   false,
+		msglog:     msglog,
+		cmdhist:    cmdhist,
+		input:      input,
+		footer:     footer,
+		session:    session,
+		err:        nil,
+		width:      0,
+		height:     0,
+		restartApp: false,
 	}
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(textarea.Blink, readFromPort(m.scanner))
+	return tea.Batch(textarea.Blink, m.session.ReadFromPort())
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -90,15 +63,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	DbgLogMsgType(msg)
 
-	if m.conStatus == conStatus_connected {
-		m.cmdhist, cmd = m.cmdhist.Update(msg)
-		cmds = append(cmds, cmd)
-	}
+	m.cmdhist, cmd = m.cmdhist.Update(msg)
+	cmds = append(cmds, cmd)
 
 	m.msglog, cmd = m.msglog.Update(msg)
 	cmds = append(cmds, cmd)
 
 	m.input, cmd = m.input.Update(msg)
+	cmds = append(cmds, cmd)
+
+	m.session, cmd = m.session.Update(msg)
 	cmds = append(cmds, cmd)
 
 	switch msg := msg.(type) {
@@ -108,58 +82,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		cmds = append(cmds, HandleKeys(&m, msg))
 
-	case events.SerialRxMsg:
-		cmds = append(cmds, readFromPort(m.scanner))
-
-	case input.CmdExecuted:
-		cmds = append(cmds, SendToPort(*m.port, msg.Cmd))
-
-	case PortReconnectStatusMsg:
-		if msg.ok {
-			cmd1, cmd2 := HandlePortReconnect(&m, msg.port)
-			cmds = append(cmds, tea.Batch(cmd1, cmd2))
-		} else {
-			cmd := func() tea.Msg {
-				time.Sleep(1 * time.Second)
-				return StartNextReconnectTryMsg(true)
-			}
-			cmds = append(cmds, cmd)
-
-		}
-
-	case StartNextReconnectTryMsg:
-		if m.conStatus != conStatus_disconnected {
-			reconnectCmd, spinnerCmd := PrepareReconnect(&m)
-			cmds = append(cmds, reconnectCmd, spinnerCmd)
-		}
-
-	case ErrMsg:
-		switch msg.err.(type) {
+	case events.ErrMsg:
+		switch msg := msg.(type) {
 		case *serial.PortError:
-			reconnectCmd, spinnerCmd := HandleSerialPortErr(&m, msg.err.(*serial.PortError))
+			// TODO move error handling to session module
+			reconnectCmd, spinnerCmd := m.session.HandleSerialPortErr(msg)
 			cmds = append(cmds, reconnectCmd, spinnerCmd)
 		default:
-			m.err = msg.err
+			m.err = error(msg)
 		}
-
-	case PortManualConnectMsg:
-		if m.conStatus == conStatus_disconnected {
-			reconnectCmd, spinnerCmd := PrepareReconnect(&m)
-			cmds = append(cmds, reconnectCmd, spinnerCmd)
-		} else {
-			m.conStatus = conStatus_disconnected
-			(*m.port).Close()
-			m.input.SetDisconnectet()
-		}
-
-	case spinner.TickMsg:
-		if m.conStatus == conStatus_connecting {
-			m.spinner, cmd = m.spinner.Update(msg)
-			cmds = append(cmds, cmd)
-		}
-
-	case events.HistCmdExecuted:
-		cmds = append(cmds, SendToPort(*m.port, string(msg)))
 
 	case msglog.EditorFinishedMsg:
 		// workaround bubbletea v1 bug: after executing external command,
@@ -177,12 +108,13 @@ func (m model) View() string {
 		return fmt.Sprintf("\nWe had some trouble: %v\n\n", m.err)
 	}
 
+	// TODO put this into view method
 	serialVpFooter := fmt.Sprintf("%v, %3.f%%", m.msglog.GetLen(), m.msglog.GetScrollPercent())
 	serialVp := styles.AddBorder(m.msglog.Vp, "Messages", serialVpFooter)
 
+	// TOD put this into view method
 	cmdVp := styles.AddBorder(m.cmdhist.Vp, "Commands", "")
 
-	// Arrange viewports side by side
 	viewports := lipgloss.JoinHorizontal(
 		lipgloss.Top,
 		serialVp,
@@ -193,7 +125,7 @@ func (m model) View() string {
 		lipgloss.Left,
 		viewports,
 		m.input.View(),
-		m.footer.View(m.selectedPort, m.conStatus, m.spinner),
+		m.footer.View(m.session.View()),
 	)
 
 	return zone.Scan(lipgloss.Place(
@@ -205,13 +137,6 @@ func (m model) View() string {
 }
 
 func HandleKeys(m *model, key tea.KeyMsg) tea.Cmd {
-	switch key.String() {
-	case "ctrl+x":
-		return func() tea.Msg {
-			return PortManualConnectMsg(true)
-		}
-	}
-
 	switch key.Type {
 	case tea.KeyCtrlC, tea.KeyEsc:
 		StoreConfig(m.cmdhist.GetCmdHist())
@@ -248,41 +173,6 @@ func HandleNewWindowSize(m *model, msg tea.WindowSizeMsg) {
 
 	m.msglog.UpdateVp()
 	m.cmdhist.ResetVp()
-}
-
-// Handle serial port errors.
-// If serial port was closed for any reason, start trying to reconnect to the port
-// and start the reconnect spinner symbol.
-func HandleSerialPortErr(m *model, msg *serial.PortError) (tea.Cmd, tea.Cmd) {
-	if msg.Code() == serial.PortClosed {
-		if m.conStatus != conStatus_disconnected {
-			return PrepareReconnect(m)
-		}
-	}
-	return nil, nil
-}
-
-// Prepare TUI to reconnect
-func PrepareReconnect(m *model) (tea.Cmd, tea.Cmd) {
-	m.input.SetReconnecting()
-	m.conStatus = conStatus_connecting
-	(*m.port).Close()
-	reconnectCmd := reconnectToPort(m.selectedPort, m.selectedMode)
-	spinnerCmd := m.spinner.Tick
-	return reconnectCmd, spinnerCmd
-}
-
-// Handle port reconnected event.
-func HandlePortReconnect(m *model, port Port) (tea.Cmd, tea.Cmd) {
-	log.Println("Successfully reconnected to port " + m.selectedPort)
-	m.input.Ta.Placeholder = "Send a message..." // TODO remove duplicated code
-	cursorBlinkCmd := m.input.Ta.Focus()
-	m.conStatus = conStatus_connected
-	*m.port = port
-	m.scanner = bufio.NewScanner(*m.port)
-	readCmd := readFromPort(m.scanner)
-
-	return cursorBlinkCmd, readCmd
 }
 
 func RunTui(port *io.ReadWriteCloser, mode serial.Mode, flags Flags, config Config, serialLog *log.Logger) {

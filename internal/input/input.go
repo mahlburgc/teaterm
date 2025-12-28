@@ -8,10 +8,6 @@ import (
 	"github.com/mahlburgc/teaterm/internal/styles"
 )
 
-type CmdExecuted struct {
-	Cmd string
-}
-
 type Model struct {
 	Ta textarea.Model
 }
@@ -55,9 +51,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				return m, nil
 			}
 			return m, func() tea.Msg {
-				return CmdExecuted{
-					Cmd: m.Ta.Value(),
-				}
+				return events.SendMsg(m.Ta.Value())
 			}
 		}
 

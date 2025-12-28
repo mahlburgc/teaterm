@@ -127,7 +127,7 @@ func SendCmdSelectedMsg(cmd string) tea.Cmd {
 // Returns a Tea command to send a message with the arrow selected cmd to the event loop.
 func SendCmdExecutedMsg(cmd string) tea.Cmd {
 	return func() tea.Msg {
-		return events.HistCmdExecuted(cmd)
+		return events.SendMsg(cmd)
 	}
 }
 

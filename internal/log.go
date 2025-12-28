@@ -40,7 +40,7 @@ func StartDbgLogger() (close func()) {
 // Log messsage type to debug file
 func DbgLogMsgType(msg any) {
 	switch msg := msg.(type) {
-	case cursor.BlinkMsg, spinner.TickMsg, events.SerialRxMsg:
+	case cursor.BlinkMsg, spinner.TickMsg, events.SerialRxMsgReceived:
 		// avoid logging on spamming messages
 	default:
 		log.Printf("Update Msg: Type: %T Value: %v\n", msg, msg)

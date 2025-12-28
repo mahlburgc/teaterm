@@ -71,7 +71,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case events.SerialTxMsg:
 		m.AddMsg(string(msg), true)
 
-	case events.SerialRxMsg:
+	case events.SerialRxMsgReceived:
 		m.AddMsg(string(msg), false)
 
 	case tea.KeyMsg:
