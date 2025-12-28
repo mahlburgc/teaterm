@@ -137,6 +137,12 @@ func (m model) View() string {
 }
 
 func HandleKeys(m *model, key tea.KeyMsg) tea.Cmd {
+	switch key.String() {
+	case "ctrl+q":
+		StoreConfig(m.cmdhist.GetCmdHist())
+		return tea.Quit
+	}
+
 	switch key.Type {
 	case tea.KeyCtrlC, tea.KeyEsc:
 		StoreConfig(m.cmdhist.GetCmdHist())
