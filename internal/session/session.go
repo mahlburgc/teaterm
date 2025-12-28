@@ -74,12 +74,18 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+x":
 			if m.status == disconnected {
-				return m, tea.Batch(m.PrepareReconnect())
+				cmd = func() tea.Msg {
+					return events.ConnectionStatusMsg{Status: events.Connecting}
+				}
+				return m, tea.Batch(m.PrepareReconnect(), cmd)
 			} else {
+				cmd = func() tea.Msg {
+					return events.ConnectionStatusMsg{Status: events.Disconnected}
+				}
 				m.status = disconnected
 				(*m.port).Close()
+				return m, cmd
 			}
-			return m, cmd
 		}
 
 	case events.SerialRxMsgReceived:
@@ -96,7 +102,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 	case portReconnectedStatusMsg:
 		if msg.ok {
-			return m, tea.Batch(m.HandlePortReconnected(msg.port))
+			return m, m.HandlePortReconnected(msg.port)
 		} else {
 			cmd = func() tea.Msg {
 				time.Sleep(1 * time.Second)
@@ -209,12 +215,12 @@ func (m Model) SendToPort(msg string) tea.Cmd {
 }
 
 // Prepare TUI to reconnect
-func (m *Model) PrepareReconnect() (tea.Cmd, tea.Cmd) {
+func (m *Model) PrepareReconnect() tea.Cmd {
 	m.status = connecting
 	(*m.port).Close()
 	startReconnectCmd := reconnectToPort(m.selectedPort, m.selectedMode)
 	spinnerCmd := m.sp.Tick
-	return startReconnectCmd, spinnerCmd
+	return tea.Batch(startReconnectCmd, spinnerCmd)
 }
 
 // Handle port reconnected event.
@@ -224,17 +230,24 @@ func (m Model) HandlePortReconnected(port Port) tea.Cmd {
 	*m.port = port
 	m.scanner = bufio.NewScanner(*m.port)
 
-	return m.ReadFromPort()
+	broadcastConStatusCmd := func() tea.Msg {
+		return events.ConnectionStatusMsg{Status: events.Connected}
+	}
+
+	return tea.Batch(m.ReadFromPort(), broadcastConStatusCmd)
 }
 
 // Handle serial port errors.
 // If serial port was closed for any reason, start trying to reconnect to the port
 // and start the reconnect spinner symbol.
-func (m *Model) HandleSerialPortErr(msg *serial.PortError) (tea.Cmd, tea.Cmd) {
+func (m *Model) HandleSerialPortErr(msg *serial.PortError) tea.Cmd {
 	if msg.Code() == serial.PortClosed {
 		if m.status != disconnected {
-			return m.PrepareReconnect()
+			cmd := func() tea.Msg {
+				return events.ConnectionStatusMsg{Status: events.Connecting}
+			}
+			return tea.Batch(m.PrepareReconnect(), cmd)
 		}
 	}
-	return nil, nil
+	return nil
 }

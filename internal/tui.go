@@ -86,8 +86,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg := msg.(type) {
 		case *serial.PortError:
 			// TODO move error handling to session module
-			reconnectCmd, spinnerCmd := m.session.HandleSerialPortErr(msg)
-			cmds = append(cmds, reconnectCmd, spinnerCmd)
+			cmds = append(cmds, m.session.HandleSerialPortErr(msg))
 		default:
 			m.err = error(msg)
 		}

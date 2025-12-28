@@ -1,6 +1,8 @@
 package input
 
 import (
+	"log"
+
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -44,6 +46,22 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	}
 
 	switch msg := msg.(type) {
+
+	case events.ConnectionStatusMsg:
+		log.Printf("connection status changed for input : %v\n", msg.Status)
+
+		switch msg.Status {
+		case events.Disconnected:
+			m.SetDisconnectet()
+
+		case events.Connected:
+			m.SetConnected()
+
+		case events.Connecting:
+			m.SetConnecting()
+		}
+		return m, nil
+
 	case tea.KeyMsg:
 		switch msg.Type {
 		case tea.KeyEnter:
@@ -85,7 +103,7 @@ func (m *Model) SetConnected() {
 	m.Ta.Placeholder = "Send a message..."
 }
 
-func (m *Model) SetReconnecting() {
+func (m *Model) SetConnecting() {
 	m.Ta.Reset()
 	m.Ta.Blur()
 	m.Ta.Placeholder = "Connecting..."
