@@ -170,7 +170,7 @@ func OpenPort(portname string) (Port, serial.Mode) {
 	return port, mode
 }
 
-// Returns a tea command to that tries to reconnect to the serial port we connected
+// Returns a tea command that tries to reconnect to the serial port we connected
 // to on startup.
 func reconnectToPort(selectedPort string, selectedMode *serial.Mode) tea.Cmd {
 	return func() tea.Msg {
@@ -224,7 +224,7 @@ func (m *Model) PrepareReconnect() tea.Cmd {
 }
 
 // Handle port reconnected event.
-func (m Model) HandlePortReconnected(port Port) tea.Cmd {
+func (m *Model) HandlePortReconnected(port Port) tea.Cmd {
 	log.Println("Successfully reconnected to port " + m.selectedPort)
 	m.status = connected
 	*m.port = port

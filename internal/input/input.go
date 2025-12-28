@@ -55,12 +55,12 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.SetDisconnectet()
 
 		case events.Connected:
-			m.SetConnected()
+			cmd = m.SetConnected()
 
 		case events.Connecting:
 			m.SetConnecting()
 		}
-		return m, nil
+		return m, cmd
 
 	case tea.KeyMsg:
 		switch msg.Type {
@@ -74,10 +74,11 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 
 	case events.SerialTxMsg:
-		m.Reset()
+		return m, m.Reset()
 
 	case events.HistCmdSelected:
 		m.SetValue(string(msg))
+		return m, nil
 	}
 
 	return m, nil
@@ -93,22 +94,22 @@ func (m *Model) SetValue(value string) {
 
 func (m *Model) SetDisconnectet() {
 	m.Ta.Reset()
-	m.Ta.Blur()
 	m.Ta.Placeholder = "Disconnected"
+	m.Ta.Blur()
 }
 
-func (m *Model) SetConnected() {
+func (m *Model) SetConnected() tea.Cmd {
 	m.Ta.Reset()
-	m.Ta.Focused()
 	m.Ta.Placeholder = "Send a message..."
+	return m.Ta.Focus()
 }
 
 func (m *Model) SetConnecting() {
 	m.Ta.Reset()
-	m.Ta.Blur()
 	m.Ta.Placeholder = "Connecting..."
+	m.Ta.Blur()
 }
 
-func (m *Model) Reset() {
-	m.SetConnected()
+func (m *Model) Reset() tea.Cmd {
+	return m.SetConnected()
 }
