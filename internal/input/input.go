@@ -1,8 +1,6 @@
 package input
 
 import (
-	"log"
-
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -48,8 +46,6 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
 
 	case events.ConnectionStatusMsg:
-		log.Printf("connection status changed for input : %v\n", msg.Status)
-
 		switch msg.Status {
 		case events.Disconnected:
 			m.SetDisconnectet()
@@ -77,8 +73,13 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, m.Reset()
 
 	case events.HistCmdSelected:
-		m.SetValue(string(msg))
-		return m, nil
+		if string(msg) == "" {
+			return m, m.Reset()
+		} else {
+			m.SetValue(string(msg))
+			return m, nil
+		}
+
 	}
 
 	return m, nil

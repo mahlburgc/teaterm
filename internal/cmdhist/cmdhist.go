@@ -17,6 +17,7 @@ type Model struct {
 	SelectStyle  lipgloss.Style
 	cmdHist      []string
 	cmdHistIndex int
+	active       bool
 }
 
 // New creates a new model with default settings.
@@ -41,6 +42,8 @@ func New(cmdHist []string) (m Model) {
 			m.cmdHist = append(m.cmdHist, cmd)
 		}
 	}
+	m.active = true
+
 	return m
 }
 
@@ -55,8 +58,29 @@ func (m Model) GetHistLen() int {
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	var cmd tea.Cmd
 
-	// m.Vp, cmd = m.Vp.Update(msg) is currently not called because it breaks the manual vp handling
+	switch msg := msg.(type) {
+	case events.ConnectionStatusMsg:
+		switch msg.Status {
+		case events.Disconnected:
+			m.ResetVp()
+			m.active = false
 
+		case events.Connected:
+			m.active = true
+
+		case events.Connecting:
+			m.ResetVp()
+			m.active = false
+		}
+		return m, cmd
+	}
+
+	// do not handle any other events during inactive state
+	if m.active == false {
+		return m, nil
+	}
+
+	// m.Vp, cmd = m.Vp.Update(msg) is currently not called because it breaks the manual vp handling
 	switch msg := msg.(type) {
 
 	case events.SerialTxMsg:
@@ -174,6 +198,9 @@ func (m *Model) updateCmdHistView() (c tea.Cmd) {
 		} else {
 			cmdHistLines[i] = zone.Mark(strconv.Itoa(i), cmd)
 		}
+	}
+	if c == nil {
+		c = SendCmdSelectedMsg("")
 	}
 	m.Vp.SetContent(lipgloss.NewStyle().Render(strings.Join(cmdHistLines, "\n")))
 
