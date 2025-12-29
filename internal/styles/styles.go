@@ -17,6 +17,8 @@ var (
 	SelectedCmdStyle        = CursorStyle
 	SpinnerStyle            = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 	VpTxMsgStyle            = CursorStyle
+	ErrMsgStyle             = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	InfoMsgStyle            = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	FooterStyle             = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	FocusedPromtStyle       = CursorStyle
 	BlurredPromtStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))

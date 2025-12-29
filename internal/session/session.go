@@ -115,6 +115,12 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if m.status != disconnected {
 			return m, tea.Batch(m.prepareReconnect())
 		}
+
+	case events.ErrMsg:
+		switch msg := msg.(type) {
+		case *serial.PortError:
+			return m, m.HandleSerialPortErr(msg)
+		}
 	}
 
 	return m, nil
@@ -237,7 +243,11 @@ func (m *Model) handlePortReconnected(port Port) tea.Cmd {
 		return events.ConnectionStatusMsg{Status: events.Connected}
 	}
 
-	return tea.Batch(m.ReadFromPort(), broadcastConStatusCmd)
+	broadcastInfoMsgCmd := func() tea.Msg {
+		return events.InfoMsg("Successfully reconnected to port " + m.selectedPort)
+	}
+
+	return tea.Batch(m.ReadFromPort(), broadcastConStatusCmd, broadcastInfoMsgCmd)
 }
 
 // Handle serial port errors.

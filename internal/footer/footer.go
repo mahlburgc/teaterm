@@ -17,8 +17,12 @@ func (m *Model) SetWidth(w int) {
 	m.width = w
 }
 
+func (m Model) GetHeight() int {
+	return lipgloss.Height(m.View(""))
+}
+
 func (m Model) View(connection string) string {
-	helpText := " | ?: help · ↑/↓: cmds · PgUp/PgDn: scroll · ctrl+e: editor"
+	helpText := " | ctrl+q: quit · ↑/↓: cmds · PgUp/PgDn: scroll · ctrl+e: editor"
 
 	return lipgloss.NewStyle().MaxWidth(m.width).Render(connection +
 		styles.FooterStyle.Render(helpText))

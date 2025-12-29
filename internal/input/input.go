@@ -67,6 +67,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, func() tea.Msg {
 				return events.SendMsg{Data: m.Ta.Value(), FromCmdHist: false}
 			}
+		case tea.KeyCtrlC:
+			return m, m.Reset()
 		}
 
 	case events.SendMsg:
@@ -87,6 +89,14 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 func (m Model) View() string {
 	return m.Ta.View()
+}
+
+func (m *Model) SetWidth(width int) {
+	m.Ta.SetWidth(width)
+}
+
+func (m Model) GetHeight() int {
+	return lipgloss.Height(m.View())
 }
 
 func (m *Model) SetValue(value string) {

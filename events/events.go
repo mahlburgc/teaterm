@@ -20,6 +20,9 @@ type SendMsg struct {
 // Indicates that an error occured
 type ErrMsg error
 
+// Indicates an info that should be displayed
+type InfoMsg string
+
 // ConnectionStatus represents the state of the serial connection
 type ConnectionStatus int
 

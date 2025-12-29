@@ -101,6 +101,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		case tea.KeyDown:
 			return m, m.scrollDown()
 
+		case tea.KeyCtrlC:
+			return m, m.ResetVp()
+
 		default:
 			return m, nil
 		}
@@ -161,6 +164,15 @@ func SendCmdExecutedMsg(cmd string) tea.Cmd {
 // View renders the model's view.
 func (m Model) View() string {
 	return styles.AddBorder(m.Vp, "Commands", "")
+}
+
+func (m *Model) SetSize(width, height int) {
+	borderWidth, borderHeight := styles.FocusedBorderStyle.GetFrameSize()
+
+	m.Vp.Width = width - borderWidth
+	m.Vp.Height = height - borderHeight
+
+	m.ResetVp()
 }
 
 // Scroll up cmd view.

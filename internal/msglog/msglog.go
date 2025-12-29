@@ -20,11 +20,15 @@ import (
 type Model struct {
 	Vp            viewport.Model
 	sendStyle     lipgloss.Style
+	errStyle      lipgloss.Style
+	infoStyle     lipgloss.Style
 	log           []string
 	showTimestamp bool
 	serialLog     *log.Logger
 	txPrefix      string
 	rxPrefix      string
+	errPrefix     string
+	infoPrefix    string
 	showEscapes   bool
 }
 
@@ -33,8 +37,17 @@ type EditorFinishedMsg struct {
 	err error
 }
 
+const (
+	rxMsg = iota
+	txMsg
+	errMsg
+	infoMsg
+)
+
 // New creates a new model with default settings.
-func New(showTimestamp bool, showEscapes bool, sendStyle lipgloss.Style, serialLog *log.Logger) (m Model) {
+func New(showTimestamp bool, showEscapes bool, sendStyle lipgloss.Style,
+	errStyle lipgloss.Style, infoStyle lipgloss.Style, serialLog *log.Logger,
+) (m Model) {
 	// Serial viewport contains all sent and received messages.
 	// We will create a viewport without border and later manually
 	// add the border to inject a title into the border.
@@ -52,9 +65,13 @@ func New(showTimestamp bool, showEscapes bool, sendStyle lipgloss.Style, serialL
 
 	m.txPrefix = ""
 	m.rxPrefix = ""
+	m.errPrefix = "ERROR: "
+	m.infoPrefix = "INFO: "
 	m.serialLog = serialLog
 
 	m.sendStyle = sendStyle
+	m.errStyle = errStyle
+	m.infoStyle = infoStyle
 	m.showTimestamp = showTimestamp
 
 	return m
@@ -70,10 +87,21 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
 
 	case events.SendMsg:
-		m.AddMsg(msg.Data, true)
+		m.addMsg(msg.Data, txMsg)
 
 	case events.SerialRxMsgReceived:
-		m.AddMsg(string(msg), false)
+		m.addMsg(string(msg), rxMsg)
+
+	case events.ErrMsg:
+		if msg == nil {
+			return m, nil
+		}
+		m.addMsg(msg.Error(), errMsg)
+		return m, nil
+
+	case events.InfoMsg:
+		m.addMsg(string(msg), infoMsg)
+		return m, nil
 
 	case tea.KeyMsg:
 
@@ -127,17 +155,31 @@ func (m Model) View() string {
 	return styles.AddBorder(m.Vp, "Messages", footer)
 }
 
+func (m *Model) SetSize(width, height int) {
+	borderWidth, borderHeight := styles.FocusedBorderStyle.GetFrameSize()
+
+	m.Vp.Width = width - borderWidth
+	m.Vp.Height = height - borderHeight
+
+	m.UpdateVp()
+}
+
 // Log a message to the viewport
-func (m *Model) AddMsg(msg string, isTxMsg bool) {
+func (m *Model) addMsg(msg string, msgType int) {
 	var line strings.Builder
 	if m.showTimestamp {
 		t := time.Now().Format("15:04:05.000")
 		line.WriteString(fmt.Sprintf("[%s] ", t))
 	}
 
-	if isTxMsg {
+	switch msgType {
+	case txMsg:
 		line.WriteString(m.txPrefix)
-	} else {
+	case errMsg:
+		line.WriteString(m.errPrefix)
+	case infoMsg:
+		line.WriteString(m.infoPrefix)
+	default:
 		line.WriteString(m.rxPrefix)
 	}
 
@@ -152,9 +194,14 @@ func (m *Model) AddMsg(msg string, isTxMsg bool) {
 	}
 
 	// TODO set serial message histrory limit, remove oldest if exceed
-	if isTxMsg {
+	switch msgType {
+	case txMsg:
 		m.log = append(m.log, m.sendStyle.Render(line.String()))
-	} else {
+	case errMsg:
+		m.log = append(m.log, m.errStyle.Render(line.String()))
+	case infoMsg:
+		m.log = append(m.log, m.infoStyle.Render(line.String()))
+	default:
 		m.log = append(m.log, lipgloss.NewStyle().Render(line.String()))
 	}
 
