@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	zone "github.com/lrstanley/bubblezone"
 	"github.com/mahlburgc/teaterm/events"
+	"github.com/mahlburgc/teaterm/internal/styles"
 )
 
 type Model struct {
@@ -84,7 +85,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
 
 	case events.SendMsg:
-		if !msg.FromCmdHistClick {
+		if !msg.FromCmdHist {
 			m.AddCmd(msg.Data)
 		}
 
@@ -153,13 +154,13 @@ func SendCmdSelectedMsg(cmd string) tea.Cmd {
 // Returns a Tea command to send a message with the arrow selected cmd to the event loop.
 func SendCmdExecutedMsg(cmd string) tea.Cmd {
 	return func() tea.Msg {
-		return events.SendMsg{Data: cmd, FromCmdHistClick: true}
+		return events.SendMsg{Data: cmd, FromCmdHist: true}
 	}
 }
 
 // View renders the model's view.
 func (m Model) View() string {
-	return m.Vp.View()
+	return styles.AddBorder(m.Vp, "Commands", "")
 }
 
 // Scroll up cmd view.

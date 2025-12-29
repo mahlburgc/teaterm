@@ -102,22 +102,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
-	// If there's an error, print it out and don't do anything else.
 	if m.err != nil {
 		return fmt.Sprintf("\nWe had some trouble: %v\n\n", m.err)
 	}
 
-	// TODO put this into view method
-	serialVpFooter := fmt.Sprintf("%v, %3.f%%", m.msglog.GetLen(), m.msglog.GetScrollPercent())
-	serialVp := styles.AddBorder(m.msglog.Vp, "Messages", serialVpFooter)
-
-	// TOD put this into view method
-	cmdVp := styles.AddBorder(m.cmdhist.Vp, "Commands", "")
-
 	viewports := lipgloss.JoinHorizontal(
 		lipgloss.Top,
-		serialVp,
-		cmdVp,
+		m.msglog.View(),
+		m.cmdhist.View(),
 	)
 
 	screen := lipgloss.JoinVertical(

@@ -65,7 +65,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				return m, nil
 			}
 			return m, func() tea.Msg {
-				return events.SendMsg{Data: m.Ta.Value(), FromCmdHistClick: false}
+				return events.SendMsg{Data: m.Ta.Value(), FromCmdHist: false}
 			}
 		}
 

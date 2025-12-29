@@ -13,8 +13,8 @@ type HistCmdSelected string
 
 // Indicates that a messages should be transmitted
 type SendMsg struct {
-	Data             string
-	FromCmdHistClick bool
+	Data        string
+	FromCmdHist bool
 } // TODO find better naming
 
 // Indicates that an error occured

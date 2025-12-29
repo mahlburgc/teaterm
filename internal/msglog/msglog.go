@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/icza/gox/stringsx"
 	"github.com/mahlburgc/teaterm/events"
+	"github.com/mahlburgc/teaterm/internal/styles"
 )
 
 type Model struct {
@@ -122,7 +123,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 }
 
 func (m Model) View() string {
-	return m.Vp.View()
+	footer := fmt.Sprintf("%v, %3.f%%", m.GetLen(), m.GetScrollPercent())
+	return styles.AddBorder(m.Vp, "Messages", footer)
 }
 
 // Log a message to the viewport
