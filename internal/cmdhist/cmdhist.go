@@ -83,8 +83,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	// m.Vp, cmd = m.Vp.Update(msg) is currently not called because it breaks the manual vp handling
 	switch msg := msg.(type) {
 
-	case events.SerialTxMsg:
-		m.AddCmd(string(msg))
+	case events.SendMsg:
+		if !msg.FromCmdHistClick {
+			m.AddCmd(msg.Data)
+		}
 
 	case tea.KeyMsg:
 		switch msg.Type {
@@ -151,7 +153,7 @@ func SendCmdSelectedMsg(cmd string) tea.Cmd {
 // Returns a Tea command to send a message with the arrow selected cmd to the event loop.
 func SendCmdExecutedMsg(cmd string) tea.Cmd {
 	return func() tea.Msg {
-		return events.SendMsg(cmd)
+		return events.SendMsg{Data: cmd, FromCmdHistClick: true}
 	}
 }
 

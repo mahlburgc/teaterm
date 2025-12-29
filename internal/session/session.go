@@ -98,7 +98,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 
 	case events.SendMsg:
-		return m, m.SendToPort(string(msg)) // Todo check if could be private
+		return m, m.sendToPort(msg.Data)
 
 	case portReconnectedStatusMsg:
 		if msg.ok {
@@ -121,19 +121,22 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 }
 
 func (m Model) View() string {
-	var connectionSymbol string
+	var status string
 
 	switch m.status {
 	case connected:
-		connectionSymbol = fmt.Sprintf(" %s ", styles.ConnectSymbolStyle.Render("●"))
+		status = fmt.Sprintf(" %s ", styles.ConnectSymbolStyle.Render("●"))
 
 	case disconnected:
-		connectionSymbol = fmt.Sprintf(" %s ", styles.DisconnectedSymbolStyle.Render("●"))
+		status = fmt.Sprintf(" %s ", styles.DisconnectedSymbolStyle.Render("●"))
 
 	case connecting:
-		connectionSymbol = fmt.Sprintf(" %s", m.sp.View())
+		status = fmt.Sprintf(" %s", m.sp.View())
 	}
-	return zone.Mark("consymbol", connectionSymbol)
+
+	status += styles.FooterStyle.Render(m.selectedPort)
+
+	return zone.Mark("session", status)
 }
 
 // Print out a list of all available ports.
@@ -203,14 +206,14 @@ func (m Model) ReadFromPort() tea.Cmd {
 
 // Returns a Tea command to send a message string to the serial port.
 // The tea command returns the transmitted message or error, if occured.
-func (m Model) SendToPort(msg string) tea.Cmd {
+func (m Model) sendToPort(msg string) tea.Cmd {
 	return func() tea.Msg {
 		stringToSend := msg + "\r\n" // TODO add custom Lineending
 		_, err := (*m.port).Write([]byte(stringToSend))
 		if err != nil {
 			return events.ErrMsg(err)
 		}
-		return events.SerialTxMsg(msg)
+		return nil
 	}
 }
 

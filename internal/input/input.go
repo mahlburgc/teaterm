@@ -65,11 +65,11 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				return m, nil
 			}
 			return m, func() tea.Msg {
-				return events.SendMsg(m.Ta.Value())
+				return events.SendMsg{Data: m.Ta.Value(), FromCmdHistClick: false}
 			}
 		}
 
-	case events.SerialTxMsg:
+	case events.SendMsg:
 		return m, m.Reset()
 
 	case events.HistCmdSelected:

@@ -68,8 +68,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 
-	case events.SerialTxMsg:
-		m.AddMsg(string(msg), true)
+	case events.SendMsg:
+		m.AddMsg(msg.Data, true)
 
 	case events.SerialRxMsgReceived:
 		m.AddMsg(string(msg), false)

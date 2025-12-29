@@ -12,7 +12,10 @@ type SerialRxMsgReceived string
 type HistCmdSelected string
 
 // Indicates that a messages should be transmitted
-type SendMsg string // TODO find better naming
+type SendMsg struct {
+	Data             string
+	FromCmdHistClick bool
+} // TODO find better naming
 
 // Indicates that an error occured
 type ErrMsg error
