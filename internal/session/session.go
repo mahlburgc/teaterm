@@ -77,7 +77,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				cmd = func() tea.Msg {
 					return events.ConnectionStatusMsg{Status: events.Connecting}
 				}
-				return m, tea.Batch(m.PrepareReconnect(), cmd)
+				return m, tea.Batch(m.prepareReconnect(), cmd)
 			} else {
 				cmd = func() tea.Msg {
 					return events.ConnectionStatusMsg{Status: events.Disconnected}
@@ -102,7 +102,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 	case portReconnectedStatusMsg:
 		if msg.ok {
-			return m, m.HandlePortReconnected(msg.port)
+			return m, m.handlePortReconnected(msg.port)
 		} else {
 			cmd = func() tea.Msg {
 				time.Sleep(1 * time.Second)
@@ -113,7 +113,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 	case startNextReconnectTryMsg:
 		if m.status != disconnected {
-			return m, tea.Batch(m.PrepareReconnect())
+			return m, tea.Batch(m.prepareReconnect())
 		}
 	}
 
@@ -218,7 +218,7 @@ func (m Model) sendToPort(msg string) tea.Cmd {
 }
 
 // Prepare TUI to reconnect
-func (m *Model) PrepareReconnect() tea.Cmd {
+func (m *Model) prepareReconnect() tea.Cmd {
 	m.status = connecting
 	(*m.port).Close()
 	startReconnectCmd := reconnectToPort(m.selectedPort, m.selectedMode)
@@ -227,7 +227,7 @@ func (m *Model) PrepareReconnect() tea.Cmd {
 }
 
 // Handle port reconnected event.
-func (m *Model) HandlePortReconnected(port Port) tea.Cmd {
+func (m *Model) handlePortReconnected(port Port) tea.Cmd {
 	log.Println("Successfully reconnected to port " + m.selectedPort)
 	m.status = connected
 	*m.port = port
@@ -249,7 +249,7 @@ func (m *Model) HandleSerialPortErr(msg *serial.PortError) tea.Cmd {
 			cmd := func() tea.Msg {
 				return events.ConnectionStatusMsg{Status: events.Connecting}
 			}
-			return tea.Batch(m.PrepareReconnect(), cmd)
+			return tea.Batch(m.prepareReconnect(), cmd)
 		}
 	}
 	return nil
