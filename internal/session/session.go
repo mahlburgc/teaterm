@@ -7,6 +7,8 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -145,11 +147,11 @@ func (m Model) View() string {
 	return zone.Mark("session", status)
 }
 
-// Print out a list of all available ports.
 func ListPorts() {
 	ports, err := enumerator.GetDetailedPortsList()
 	if err != nil {
 		log.Fatal(err)
+		return
 	}
 
 	if len(ports) == 0 {
@@ -157,12 +159,22 @@ func ListPorts() {
 		return
 	}
 
-	for _, port := range ports {
-		fmt.Printf("Found port: %s\n", port.Name)
-		if port.IsUSB {
-			fmt.Printf("   USB ID     %s:%s\n", port.VID, port.PID)
-			fmt.Printf("   USB serial %s\n", port.SerialNumber)
-		}
+	portMap := make(map[string]*enumerator.PortDetails)
+	for _, p := range ports {
+		portMap[p.Name] = p
+	}
+
+	byIdDir := "/dev/serial/by-id"
+	entries, _ := os.ReadDir(byIdDir)
+
+	fmt.Printf("%-15s  %-70s\n", "Device", "By-id")
+	fmt.Println(strings.Repeat("-", 15) + "  " + strings.Repeat("-", 70))
+
+	for _, entry := range entries {
+		fullPath := filepath.Join(byIdDir, entry.Name())
+		realPath, _ := filepath.EvalSymlinks(fullPath)
+
+		fmt.Printf("%-15s  %-70s\n", realPath, fullPath)
 	}
 }
 
