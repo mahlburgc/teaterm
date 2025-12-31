@@ -23,6 +23,7 @@ type model struct {
 	input      input.Model
 	footer     footer.Model
 	session    session.Model
+	showCmdLog bool
 	restartApp bool
 	width      int
 	height     int
@@ -44,6 +45,7 @@ func initialModel(port *io.ReadWriteCloser, showTimestamp bool, cmdHist []string
 		input:      input,
 		footer:     footer,
 		session:    session,
+		showCmdLog: true,
 		width:      0,
 		height:     0,
 		restartApp: false,
@@ -74,10 +76,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		HandleNewWindowSize(&m, msg)
+		m.width = msg.Width
+		m.height = msg.Height
+		m.updateLayout()
 
 	case tea.KeyMsg:
-		cmds = append(cmds, HandleKeys(&m, msg))
+		cmds = append(cmds, m.handleKeys(msg))
 
 	case msglog.EditorFinishedMsg:
 		// workaround bubbletea v1 bug: after executing external command,
@@ -111,11 +115,15 @@ func (m model) View() string {
 		screen))
 }
 
-func HandleKeys(m *model, key tea.KeyMsg) tea.Cmd {
+func (m *model) handleKeys(key tea.KeyMsg) tea.Cmd {
 	switch key.String() {
 	case "ctrl+q":
 		StoreConfig(m.cmdhist.GetCmdHist())
 		return tea.Quit
+
+	case "ctrl+r":
+		m.showCmdLog = !m.showCmdLog
+		m.updateLayout()
 	}
 
 	switch key.Type {
@@ -126,16 +134,18 @@ func HandleKeys(m *model, key tea.KeyMsg) tea.Cmd {
 	return nil
 }
 
-func HandleNewWindowSize(m *model, msg tea.WindowSizeMsg) {
-	m.width = msg.Width
-	m.height = msg.Height
-
+func (m *model) updateLayout() {
 	footerHeight := m.footer.GetHeight()
 	inputHeight := m.input.GetHeight()
 	viewportsHeight := m.height - inputHeight - footerHeight
 
 	// 75% width for Message Log, 25% for Command History
 	msgLogWidth := (m.width / 4) * 3
+
+	if !m.showCmdLog {
+		msgLogWidth = m.width
+	}
+
 	cmdHistWidth := m.width - msgLogWidth
 
 	m.footer.SetWidth(m.width)

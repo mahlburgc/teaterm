@@ -101,7 +101,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		case tea.KeyDown:
 			return m, m.scrollDown()
 
-		case tea.KeyCtrlC:
+		case tea.KeyCtrlC, tea.KeyCtrlR:
 			return m, m.ResetVp()
 
 		default:
