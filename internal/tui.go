@@ -51,7 +51,7 @@ func initialModel(port *io.ReadWriteCloser, showTimestamp bool, cmdHist []string
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(textarea.Blink, m.session.ReadFromPort())
+	return tea.Batch(textarea.Blink, m.session.Init())
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {

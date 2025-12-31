@@ -47,6 +47,8 @@ type Model struct {
 	selectedMode *serial.Mode
 	status       int
 	sp           spinner.Model
+	ctx          context.Context
+	cancel       context.CancelFunc
 }
 
 func New(port *io.ReadWriteCloser, selectedPort string, selectedMode *serial.Mode) (m Model) {
@@ -55,6 +57,7 @@ func New(port *io.ReadWriteCloser, selectedPort string, selectedMode *serial.Mod
 	sp.Style = styles.SpinnerStyle
 
 	scanner := bufio.NewScanner(*port)
+	ctx, cancel := context.WithCancel(context.Background())
 
 	return Model{
 		port:         port,
@@ -63,7 +66,16 @@ func New(port *io.ReadWriteCloser, selectedPort string, selectedMode *serial.Mod
 		selectedMode: selectedMode,
 		status:       connected,
 		sp:           sp,
+		ctx:          ctx,
+		cancel:       cancel,
 	}
+}
+
+func (m Model) Init() tea.Cmd {
+	if m.status == connected {
+		return m.ReadFromPort(m.ctx)
+	}
+	return nil
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
@@ -81,17 +93,20 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				}
 				return m, tea.Batch(m.prepareReconnect(), cmd)
 			} else {
+				m.status = disconnected
+				if m.cancel != nil {
+					m.cancel()
+				}
 				cmd = func() tea.Msg {
 					return events.ConnectionStatusMsg{Status: events.Disconnected}
 				}
-				m.status = disconnected
 				(*m.port).Close()
 				return m, cmd
 			}
 		}
 
 	case events.SerialRxMsgReceived:
-		return m, m.ReadFromPort()
+		return m, m.ReadFromPort(m.ctx)
 
 	case spinner.TickMsg:
 		if m.status == connecting {
@@ -205,12 +220,22 @@ func reconnectToPort(selectedPort string, selectedMode *serial.Mode) tea.Cmd {
 
 // Returns a Tea command to scan for a new receive message on the serial port.
 // The tea command returns the received message or error, if occured.
-func (m Model) ReadFromPort() tea.Cmd {
+func (m Model) ReadFromPort(ctx context.Context) tea.Cmd {
+	scn := m.scanner
+
 	return func() tea.Msg {
 		log.Println("Starting read from port")
-		for m.scanner.Scan() {
-			line := m.scanner.Text()
+		for scn.Scan() {
+			line := scn.Text()
 			return events.SerialRxMsgReceived(line)
+		}
+
+		// Check if we manually canceled the context (Manual Disconnect)
+		select {
+		case <-ctx.Done():
+			return events.InfoMsg("Port closed manually")
+		default:
+			// Context is still active, proceed to check actual errors
 		}
 
 		if err := m.scanner.Err(); err != nil {
@@ -246,20 +271,25 @@ func (m *Model) prepareReconnect() tea.Cmd {
 
 // Handle port reconnected event.
 func (m *Model) handlePortReconnected(port Port) tea.Cmd {
-	log.Println("Successfully reconnected to port " + m.selectedPort)
+	log.Println("Port reconnected")
 	m.status = connected
 	*m.port = port
 	m.scanner = bufio.NewScanner(*m.port)
+
+	if m.cancel != nil {
+		m.cancel()
+	}
+	m.ctx, m.cancel = context.WithCancel(context.Background())
 
 	broadcastConStatusCmd := func() tea.Msg {
 		return events.ConnectionStatusMsg{Status: events.Connected}
 	}
 
 	broadcastInfoMsgCmd := func() tea.Msg {
-		return events.InfoMsg("Successfully reconnected to port " + m.selectedPort)
+		return events.InfoMsg("Port reconnected")
 	}
 
-	return tea.Batch(m.ReadFromPort(), broadcastConStatusCmd, broadcastInfoMsgCmd)
+	return tea.Batch(m.ReadFromPort(m.ctx), broadcastConStatusCmd, broadcastInfoMsgCmd)
 }
 
 // Handle serial port errors.
