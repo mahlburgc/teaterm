@@ -41,14 +41,15 @@ type (
 )
 
 type Model struct {
-	port         *io.ReadWriteCloser
-	scanner      *bufio.Scanner
-	selectedPort string
-	selectedMode *serial.Mode
-	status       int
-	sp           spinner.Model
-	ctx          context.Context
-	cancel       context.CancelFunc
+	port             *io.ReadWriteCloser
+	scanner          *bufio.Scanner
+	selectedPort     string
+	selectedMode     *serial.Mode
+	status           int
+	sp               spinner.Model
+	ctx              context.Context
+	cancel           context.CancelFunc
+	showFullPortName bool
 }
 
 func New(port *io.ReadWriteCloser, selectedPort string, selectedMode *serial.Mode) (m Model) {
@@ -60,14 +61,15 @@ func New(port *io.ReadWriteCloser, selectedPort string, selectedMode *serial.Mod
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return Model{
-		port:         port,
-		scanner:      scanner,
-		selectedPort: selectedPort,
-		selectedMode: selectedMode,
-		status:       connected,
-		sp:           sp,
-		ctx:          ctx,
-		cancel:       cancel,
+		port:             port,
+		scanner:          scanner,
+		selectedPort:     selectedPort,
+		selectedMode:     selectedMode,
+		status:           connected,
+		sp:               sp,
+		ctx:              ctx,
+		cancel:           cancel,
+		showFullPortName: false,
 	}
 }
 
@@ -138,6 +140,14 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		case *serial.PortError:
 			return m, m.HandleSerialPortErr(msg)
 		}
+
+	case tea.MouseMsg:
+		if zone.Get("session").InBounds(msg) && msg.Action == tea.MouseActionRelease {
+			m.showFullPortName = !m.showFullPortName
+		}
+
+	default:
+		return m, nil
 	}
 
 	return m, nil
@@ -157,7 +167,12 @@ func (m Model) View() string {
 		status = fmt.Sprintf(" %s", m.sp.View())
 	}
 
-	status += styles.FooterStyle.Render(m.selectedPort)
+	portname := m.selectedPort
+	if !m.showFullPortName && len(m.selectedPort) > 14 {
+		portname = "..." + m.selectedPort[len(m.selectedPort)-11:]
+	}
+
+	status += styles.FooterStyle.Render(portname)
 
 	return zone.Mark("session", status)
 }
