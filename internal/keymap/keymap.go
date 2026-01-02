@@ -37,7 +37,7 @@ type KeyMap struct {
 // ShortHelp returns keybindings to be shown in the mini help view. It's part
 // of the key.Map interface.
 func (k KeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.HelpKey, k.QuitKey, k.ToggleHistKey, k.OpenEditorKey}
+	return []key.Binding{k.QuitKey, k.HelpKey, k.ToggleHistKey, k.OpenEditorKey, k.ToggleSessionKey}
 }
 
 // FullHelp returns keybindings for the expanded help view. It's part of the
@@ -118,15 +118,15 @@ var Default = KeyMap{
 	),
 	LogTopKey: key.NewBinding(
 		key.WithKeys("home"),
-		key.WithHelp("home", "log goto top"),
+		key.WithHelp("home", "log go to top"),
 	),
 	LogBottomKey: key.NewBinding(
 		key.WithKeys("end"),
-		key.WithHelp("end", "log goto bottom"),
+		key.WithHelp("end", "log go to bottom"),
 	),
 	ToggleHistKey: key.NewBinding(
 		key.WithKeys("ctrl+r"),
-		key.WithHelp("ctrl+r", "show commads"),
+		key.WithHelp("ctrl+r", "commads"),
 	),
 	OpenEditorKey: key.NewBinding(
 		key.WithKeys("ctrl+e"),
@@ -142,7 +142,7 @@ var Default = KeyMap{
 	),
 	HelpKey: key.NewBinding(
 		key.WithKeys("ctrl+o"),
-		key.WithHelp("ctrl+o", "show help"),
+		key.WithHelp("ctrl+o", "help"),
 	),
 	DeleteCmdKey: key.NewBinding(
 		key.WithKeys("ctrl+d"),
