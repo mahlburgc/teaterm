@@ -4,16 +4,20 @@ import (
 	"io"
 	"log"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	zone "github.com/lrstanley/bubblezone"
 	"github.com/mahlburgc/teaterm/internal/cmdhist"
 	"github.com/mahlburgc/teaterm/internal/footer"
+	help "github.com/mahlburgc/teaterm/internal/help-overlay"
 	"github.com/mahlburgc/teaterm/internal/input"
+	"github.com/mahlburgc/teaterm/internal/keymap"
 	"github.com/mahlburgc/teaterm/internal/msglog"
 	"github.com/mahlburgc/teaterm/internal/session"
 	"github.com/mahlburgc/teaterm/internal/styles"
+	overlay "github.com/rmhubbert/bubbletea-overlay"
 	"go.bug.st/serial"
 )
 
@@ -23,7 +27,9 @@ type model struct {
 	input      input.Model
 	footer     footer.Model
 	session    session.Model
+	help       help.Model
 	showCmdLog bool
+	showHelp   bool
 	restartApp bool
 	width      int
 	height     int
@@ -38,6 +44,7 @@ func initialModel(port *io.ReadWriteCloser, showTimestamp bool, cmdHist []string
 		styles.ErrMsgStyle, styles.InfoMsgStyle, serialLog)
 	footer := footer.New()
 	session := session.New(port, selectedPort, selectedMode)
+	help := help.New()
 
 	return model{
 		msglog:     msglog,
@@ -45,7 +52,9 @@ func initialModel(port *io.ReadWriteCloser, showTimestamp bool, cmdHist []string
 		input:      input,
 		footer:     footer,
 		session:    session,
+		help:       help,
 		showCmdLog: true,
+		showHelp:   false,
 		width:      0,
 		height:     0,
 		restartApp: false,
@@ -72,6 +81,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	cmds = append(cmds, cmd)
 
 	m.session, cmd = m.session.Update(msg)
+	cmds = append(cmds, cmd)
+
+	m.help, cmd = m.help.Update(msg)
 	cmds = append(cmds, cmd)
 
 	switch msg := msg.(type) {
@@ -107,30 +119,38 @@ func (m model) View() string {
 		m.footer.View(m.session.View()),
 	)
 
-	return zone.Scan(lipgloss.Place(
+	output := lipgloss.Place(
 		m.width,
 		m.height,
 		lipgloss.Center,
 		lipgloss.Center,
-		screen))
+		screen,
+	)
+
+	if m.showHelp {
+		output = overlay.Composite(m.help.View(), output, overlay.Center, overlay.Center, 0, 0)
+	}
+
+	return zone.Scan(output)
 }
 
-func (m *model) handleKeys(key tea.KeyMsg) tea.Cmd {
-	switch key.String() {
-	case "ctrl+q":
+func (m *model) handleKeys(keyMsg tea.KeyMsg) tea.Cmd {
+	switch {
+	case key.Matches(keyMsg, keymap.Default.QuitKey):
 		StoreConfig(m.cmdhist.GetCmdHist())
 		return tea.Quit
 
-	case "ctrl+r":
+	case key.Matches(keyMsg, keymap.Default.ToggleHistKey):
 		m.showCmdLog = !m.showCmdLog
 		m.updateLayout()
+
+	case key.Matches(keyMsg, keymap.Default.HelpKey):
+		m.showHelp = !m.showHelp
+
+	case key.Matches(keyMsg, keymap.Default.CloseKey, keymap.Default.ResetKey):
+		m.showHelp = false
 	}
 
-	switch key.Type {
-	case tea.KeyEsc:
-		StoreConfig(m.cmdhist.GetCmdHist())
-		return tea.Quit
-	}
 	return nil
 }
 

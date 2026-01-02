@@ -5,11 +5,13 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	zone "github.com/lrstanley/bubblezone"
 	"github.com/mahlburgc/teaterm/events"
+	"github.com/mahlburgc/teaterm/internal/keymap"
 	"github.com/mahlburgc/teaterm/internal/styles"
 )
 
@@ -90,18 +92,17 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 
 	case tea.KeyMsg:
-		switch msg.Type {
-
-		case tea.KeyCtrlD:
+		switch {
+		case key.Matches(msg, keymap.Default.DeleteCmdKey):
 			return m, m.deleteCmd()
 
-		case tea.KeyUp:
+		case key.Matches(msg, keymap.Default.HistUpKey):
 			return m, m.scrollUp()
 
-		case tea.KeyDown:
+		case key.Matches(msg, keymap.Default.HistDownKey):
 			return m, m.scrollDown()
 
-		case tea.KeyCtrlC, tea.KeyCtrlR:
+		case key.Matches(msg, keymap.Default.ToggleHistKey, keymap.Default.ResetKey):
 			return m, m.ResetVp()
 
 		default:

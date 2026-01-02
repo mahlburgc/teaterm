@@ -1,10 +1,12 @@
 package input
 
 import (
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mahlburgc/teaterm/events"
+	"github.com/mahlburgc/teaterm/internal/keymap"
 	"github.com/mahlburgc/teaterm/internal/styles"
 )
 
@@ -38,6 +40,14 @@ func New() (m Model) {
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	var cmd tea.Cmd
 
+	// ignore specific shortcuts
+	if msg, ok := msg.(tea.KeyMsg); ok {
+		switch msg.String() {
+		case "alt+j", "alt+k", "alt+h", "alt+l":
+			return m, nil
+		}
+	}
+
 	m.Ta, cmd = m.Ta.Update(msg)
 	if cmd != nil {
 		return m, cmd
@@ -59,15 +69,16 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, cmd
 
 	case tea.KeyMsg:
-		switch msg.Type {
-		case tea.KeyEnter:
+		switch {
+		case key.Matches(msg, keymap.Default.SendKey):
 			if m.Ta.Value() == "" {
 				return m, nil
 			}
 			return m, func() tea.Msg {
 				return events.SendMsg{Data: m.Ta.Value(), FromCmdHist: false}
 			}
-		case tea.KeyCtrlC:
+
+		case key.Matches(msg, keymap.Default.ResetKey):
 			return m, m.Reset()
 		}
 

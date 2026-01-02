@@ -11,10 +11,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	zone "github.com/lrstanley/bubblezone"
 	"github.com/mahlburgc/teaterm/events"
+	"github.com/mahlburgc/teaterm/internal/keymap"
 	"github.com/mahlburgc/teaterm/internal/styles"
 	"go.bug.st/serial"
 	"go.bug.st/serial/enumerator"
@@ -86,9 +88,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
 
 	case tea.KeyMsg:
-
-		switch msg.String() {
-		case "ctrl+x":
+		switch {
+		case key.Matches(msg, keymap.Default.ToggleSessionKey):
 			if m.status == disconnected {
 				cmd = func() tea.Msg {
 					return events.ConnectionStatusMsg{Status: events.Connecting}

@@ -9,11 +9,13 @@ import (
 	"time"
 
 	"github.com/acarl005/stripansi"
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/icza/gox/stringsx"
 	"github.com/mahlburgc/teaterm/events"
+	"github.com/mahlburgc/teaterm/internal/keymap"
 	"github.com/mahlburgc/teaterm/internal/styles"
 )
 
@@ -93,10 +95,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.addMsg(string(msg), rxMsg)
 
 	case events.ErrMsg:
-		if msg == nil {
-			return m, nil
+		if msg != nil {
+			m.addMsg(msg.Error(), errMsg)
 		}
-		m.addMsg(msg.Error(), errMsg)
 		return m, nil
 
 	case events.InfoMsg:
@@ -104,38 +105,35 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-
-		switch msg.String() {
-		case "ctrl+left":
+		switch {
+		case key.Matches(msg, keymap.Default.LogLeftKey):
 			m.Vp.ScrollLeft(3)
 
-		case "ctrl+right":
+		case key.Matches(msg, keymap.Default.LogRightKey):
 			m.Vp.ScrollRight(3)
 
-		case "ctrl+up":
-			m.Vp.ScrollUp(3)
+		case key.Matches(msg, keymap.Default.LogUpKey):
+			m.Vp.ScrollUp(1)
 
-		case "ctrl+down":
-			m.Vp.ScrollDown(3)
+		case key.Matches(msg, keymap.Default.LogDownKey):
+			m.Vp.ScrollDown(1)
 
-		case "home":
-			m.Vp.GotoTop()
-
-		case "end":
-			m.Vp.GotoBottom()
-
-		case "ctrl+e":
-			return m, openEditorCmd(m.log)
-		}
-
-		switch msg.Type {
-		case tea.KeyPgUp:
+		case key.Matches(msg, keymap.Default.LogUpFastKey):
 			m.Vp.ScrollUp(10)
 
-		case tea.KeyPgDown:
+		case key.Matches(msg, keymap.Default.LogDownFastKey):
 			m.Vp.ScrollDown(10)
 
-		case tea.KeyCtrlL:
+		case key.Matches(msg, keymap.Default.LogTopKey):
+			m.Vp.GotoTop()
+
+		case key.Matches(msg, keymap.Default.LogBottomKey):
+			m.Vp.GotoBottom()
+
+		case key.Matches(msg, keymap.Default.OpenEditorKey):
+			return m, openEditorCmd(m.log)
+
+		case key.Matches(msg, keymap.Default.ClearLogKey):
 			if m.Vp.Height > 0 {
 				m.log = nil /* reset serial message log */
 				m.Vp.SetContent("")
