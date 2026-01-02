@@ -32,6 +32,7 @@ type KeyMap struct {
 	HelpKey          key.Binding `group:"Actions"`
 	QuitKey          key.Binding `group:"Actions"`
 	CloseKey         key.Binding `group:"Actions"`
+	AutoCompleteKey  key.Binding `group:"Actions"`
 }
 
 // ShortHelp returns keybindings to be shown in the mini help view. It's part
@@ -163,5 +164,9 @@ var Default = KeyMap{
 	ToggleSessionKey: key.NewBinding(
 		key.WithKeys("ctrl+x"),
 		key.WithHelp("ctrl+x", "open/close port"),
+	),
+	AutoCompleteKey: key.NewBinding(
+		key.WithKeys("tab"),
+		key.WithHelp("tab", "use auto suggestion"),
 	),
 }

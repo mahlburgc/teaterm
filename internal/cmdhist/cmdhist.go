@@ -91,6 +91,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.AddCmd(msg.Data)
 		}
 
+	case events.PartialTxMsg:
+		return m, m.findCmd(string(msg))
+
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, keymap.Default.DeleteCmdKey):
@@ -146,6 +149,25 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+func (m *Model) findCmd(msg string) tea.Cmd {
+	// If input is empty, don't search
+	if msg == "" {
+		return nil
+	}
+
+	// Iterate backwards to find the most recent match
+	for i := len(m.cmdHist) - 1; i >= 0; i-- {
+		cmd := m.cmdHist[i]
+		if strings.HasPrefix(cmd, msg) {
+			// Found a match
+			return func() tea.Msg {
+				return events.InputSuggestion(cmd)
+			}
+		}
+	}
+	return nil
 }
 
 // Returns a Tea command to send a message with the mouse selected cmd to the event loop.

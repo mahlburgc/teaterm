@@ -5,6 +5,12 @@ package events
 // Indicates a message was sent to the serial port.
 type SerialTxMsg string
 
+// Indicates a message is typed into the input field.
+type PartialTxMsg string
+
+// Indicates a input is suggested.
+type InputSuggestion string
+
 // Indicates data was received from the serial port.
 type SerialRxMsgReceived string
 
