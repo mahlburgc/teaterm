@@ -49,11 +49,6 @@ func (m *Model) updateViewportContent() {
 	content := lipgloss.JoinVertical(lipgloss.Left, title, m.help.View(keymap.Default))
 	m.viewport.SetContent(content)
 
-	maxContentHeight := m.height - vFrame
-	if maxContentHeight < 0 {
-		maxContentHeight = 0
-	}
-
 	if lipgloss.Width(content) <= m.width-hFrame-2 {
 		m.viewport.Width = lipgloss.Width(content)
 	} else {
