@@ -24,10 +24,8 @@ type Model struct {
 // New creates a new model with default settings.
 // Input text area contains text field to send commands to the serial port.
 func New() (m Model) {
-	m.width = 30
-
 	m.Ta = textarea.New()
-	m.Ta.SetWidth(m.width)
+	m.Ta.SetWidth(30)
 	m.Ta.SetHeight(1)
 	m.Ta.Placeholder = "Send a message..."
 	m.Ta.Focus()
@@ -149,6 +147,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 func (m Model) View() string {
 	var vp viewport.Model
+	var content string
 	vp.Height = m.Ta.Height()
 	vp.Width = m.width
 
@@ -183,17 +182,20 @@ func (m Model) View() string {
 			suffix = styles.InfoMsgStyle.Render(m.inputSuggestion[len(val):])
 		}
 
-		content := prefix + suffix
-		vp.SetContent(content)
+		content = prefix + suffix
 	} else {
-		vp.SetContent(m.Ta.View())
+		content = m.Ta.View()
 	}
 
+	vp.SetContent(content)
+	log.Printf("width: %v, ta.width: %v\n", m.width, m.Ta.Width())
+	log.Printf("conntent: %s\n", content)
 	return styles.AddBorder(vp, "", "")
 }
 
 func (m *Model) SetWidth(width int) {
 	m.width = width - 2 //-2 because border will be added later
+	m.Ta.SetWidth(m.width)
 }
 
 func (m Model) GetHeight() int {
