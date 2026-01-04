@@ -55,18 +55,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 	}
 
-	// Capture old value to check for changes
-	oldValue := m.Ta.Value()
-
 	m.Ta, cmd = m.Ta.Update(msg)
-
-	// If the value changed, verify if the suggestion is still valid
-	newValue := m.Ta.Value()
-	if oldValue != newValue {
-		if !strings.HasPrefix(m.inputSuggestion, newValue) {
-			m.inputSuggestion = ""
-		}
-	}
 
 	if cmd != nil {
 		switch msg.(type) {
@@ -152,10 +141,13 @@ func (m Model) View() string {
 	vp.Width = m.width
 
 	val := m.Ta.Value()
-	m.Ta.SetWidth(m.width)
+	inputSpace := m.width - lipgloss.Width(m.Ta.Prompt)
 
 	// Check if we should show a suggestion
-	if m.inputSuggestion != "" && strings.HasPrefix(m.inputSuggestion, val) && len(val) < len(m.inputSuggestion) {
+	if m.inputSuggestion != "" &&
+		strings.HasPrefix(m.inputSuggestion, val) &&
+		len(val) < len(m.inputSuggestion) &&
+		len(val) < inputSpace {
 
 		taWidth := lipgloss.Width(m.Ta.Prompt+m.Ta.Value()) + 1
 		m.Ta.SetWidth(taWidth)
@@ -184,11 +176,13 @@ func (m Model) View() string {
 
 		content = prefix + suffix
 	} else {
+		m.Ta.SetWidth(m.width)
 		content = m.Ta.View()
 	}
 
 	vp.SetContent(content)
 	log.Printf("width: %v, ta.width: %v\n", m.width, m.Ta.Width())
+	log.Printf("m.ta.Value: %v\n", m.Ta.Value())
 	log.Printf("conntent: %s\n", content)
 	return styles.AddBorder(vp, "", "")
 }
