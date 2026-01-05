@@ -134,9 +134,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, m.Reset()
 
 	case events.HistCmdSelected:
-		if string(msg) == "" {
-			return m, m.Reset()
-		} else {
+		if string(msg) != "" {
 			m.SetValue(string(msg))
 			return m, nil
 		}

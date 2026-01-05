@@ -113,27 +113,31 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 
 	case tea.MouseMsg:
+		// Every cmd in cmd history has number as zone name that can
+		// directly used as index for the cmd history
+		// Check on which cmd the mouse action is performed
+		var cmdSelected bool
 		for i := range m.cmdHist {
 			if zone.Get(strconv.Itoa(i)).InBounds(msg) {
 				m.cmdHistIndex = i
+				cmdSelected = true
+				break
 			}
 		}
 
-		cmd = m.updateCmdHistView()
-
-		if m.cmdHistIndex == len(m.cmdHist) {
-			return m, cmd
+		// mouse action not performed over cmd
+		if !cmdSelected {
+			return m, nil
 		}
 
-		if msg.Button != tea.MouseButtonLeft {
-			return m, cmd
+		if msg.Button == tea.MouseButtonRight ||
+			msg.Action == tea.MouseActionPress ||
+			msg.Action == tea.MouseActionMotion ||
+			m.cmdHistIndex == len(m.cmdHist) {
+			return m, m.updateCmdHistView()
 		}
 
-		if msg.Action == tea.MouseActionPress {
-			return m, cmd
-		}
-
-		if msg.Action == tea.MouseActionRelease {
+		if msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionRelease {
 			cmd = SendCmdExecutedMsg(m.cmdHist[m.cmdHistIndex])
 			m.cmdHistIndex = len(m.cmdHist)
 			m.updateCmdHistView()
