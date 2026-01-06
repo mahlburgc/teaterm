@@ -11,6 +11,7 @@ import (
 	zone "github.com/lrstanley/bubblezone"
 	"github.com/mahlburgc/teaterm/internal/cmdhist"
 	"github.com/mahlburgc/teaterm/internal/footer"
+	"github.com/mahlburgc/teaterm/internal/fzf"
 	help "github.com/mahlburgc/teaterm/internal/help-overlay"
 	"github.com/mahlburgc/teaterm/internal/input"
 	"github.com/mahlburgc/teaterm/internal/keymap"
@@ -28,8 +29,10 @@ type model struct {
 	footer     footer.Model
 	session    session.Model
 	help       help.Model
+	fzf        fzf.Model
 	showCmdLog bool
 	showHelp   bool
+	showFzf    bool
 	restartApp bool
 	width      int
 	height     int
@@ -45,6 +48,7 @@ func initialModel(port *io.ReadWriteCloser, showTimestamp bool, cmdHist []string
 	footer := footer.New()
 	session := session.New(port, selectedPort, selectedMode)
 	help := help.New()
+	fzf := fzf.New()
 
 	return model{
 		msglog:     msglog,
@@ -58,6 +62,7 @@ func initialModel(port *io.ReadWriteCloser, showTimestamp bool, cmdHist []string
 		width:      0,
 		height:     0,
 		restartApp: false,
+		fzf:        fzf,
 	}
 }
 
@@ -70,6 +75,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 
 	DbgLogMsgType(msg)
+
+	m.fzf, cmd = m.fzf.Update(msg)
+	cmds = append(cmds, cmd)
 
 	m.cmdhist, cmd = m.cmdhist.Update(msg)
 	cmds = append(cmds, cmd)
@@ -127,6 +135,10 @@ func (m model) View() string {
 		screen,
 	)
 
+	if m.showFzf {
+		output = overlay.Composite(m.fzf.View(), output, overlay.Center, overlay.Center, 0, 0)
+	}
+
 	if m.showHelp {
 		output = overlay.Composite(m.help.View(), output, overlay.Center, overlay.Center, 0, 0)
 	}
@@ -146,6 +158,10 @@ func (m *model) handleKeys(keyMsg tea.KeyMsg) tea.Cmd {
 
 	case key.Matches(keyMsg, keymap.Default.HelpKey):
 		m.showHelp = !m.showHelp
+
+	case key.Matches(keyMsg, keymap.Default.FzfKey):
+		m.fzf.GoToLastItem()
+		m.showFzf = !m.showFzf
 
 	case key.Matches(keyMsg, keymap.Default.CloseKey, keymap.Default.ResetKey):
 		m.showHelp = false

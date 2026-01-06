@@ -33,6 +33,7 @@ type KeyMap struct {
 	QuitKey          key.Binding `group:"Actions"`
 	CloseKey         key.Binding `group:"Actions"`
 	AutoCompleteKey  key.Binding `group:"Actions"`
+	FzfKey           key.Binding `group:"Actions"`
 }
 
 // ShortHelp returns keybindings to be shown in the mini help view. It's part
@@ -126,8 +127,12 @@ var Default = KeyMap{
 		key.WithHelp("end", "log go to bottom"),
 	),
 	ToggleHistKey: key.NewBinding(
+		key.WithKeys("ctrl+]"),
+		key.WithHelp("ctrl+]", "commads"),
+	),
+	FzfKey: key.NewBinding(
 		key.WithKeys("ctrl+r"),
-		key.WithHelp("ctrl+r", "commads"),
+		key.WithHelp("ctrl+r", "search"),
 	),
 	OpenEditorKey: key.NewBinding(
 		key.WithKeys("ctrl+e"),
