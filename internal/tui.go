@@ -48,7 +48,7 @@ func initialModel(port *io.ReadWriteCloser, showTimestamp bool, cmdHist []string
 	footer := footer.New()
 	session := session.New(port, selectedPort, selectedMode)
 	help := help.New()
-	fzf := fzf.New()
+	fzf := fzf.New(cmdHist)
 
 	return model{
 		msglog:     msglog,
