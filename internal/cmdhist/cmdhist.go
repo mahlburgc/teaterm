@@ -153,23 +153,26 @@ func (m Model) View() string {
 // Add a new command to the command history. The command will only be added, if not
 // already exisiting in the hist. If cmd is found, it will be moved to the end.
 func (m *Model) AddCmd(newCmd string) (c tea.Cmd) {
-	// log.Printf("add command: %s\n", newCmd)
-	// foundIndex := -1
-	// for i, cmd := range m.cmdHist {
-	// 	if cmd == newCmd {
-	// 		foundIndex = i
-	// 		break
-	// 	}
-	// }
+	if newCmd == "" {
+		return nil
+	}
 
-	// if foundIndex != -1 {
-	// 	m.cmdHist = append(m.cmdHist[:foundIndex], m.cmdHist[foundIndex+1:]...)
-	// 	m.cmdHist = append(m.cmdHist, newCmd)
-	// } else {
-	// 	m.cmdHist = append(m.cmdHist, newCmd)
-	// }
+	items := m.list.Items()
+	// Check if already in the list
+	for i, itm := range items {
+		if cmdItem, ok := itm.(item); ok && cmdItem.title == newCmd {
+			// Remove the existing item
+			m.list.RemoveItem(i)
+			break
+		}
+	}
 
-	// return m.ResetVp()
+	// Insert at the end (the current length is the last index)
+	m.list.InsertItem(len(m.list.Items()), item{title: newCmd})
+
+	// Ensure we jump to the new last item
+	m.GoToLastItem()
+
 	return nil
 }
 
