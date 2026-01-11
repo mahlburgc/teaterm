@@ -8,12 +8,15 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mahlburgc/teaterm/events"
 	"github.com/mahlburgc/teaterm/internal/keymap"
+	"github.com/mahlburgc/teaterm/internal/styles"
 )
 
 type Model struct {
 	list        list.Model
 	SelectStyle lipgloss.Style
 	active      bool
+	height      int
+	width       int
 }
 
 type item struct {
@@ -30,9 +33,23 @@ func New(cmdHist []string) Model {
 		items[i] = item{title: cmd}
 	}
 
+	normalTitleStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.AdaptiveColor{Light: "#1a1a1a", Dark: "#dddddd"}).
+		Padding(0, 0, 0, 2) //nolint:mnd
+
+	border := lipgloss.NormalBorder()
+	border.Left = ">"
+	selectedTitleStyle := lipgloss.NewStyle().
+		Border(border, false, false, false, true).
+		BorderForeground(lipgloss.AdaptiveColor{Light: "#F793FF", Dark: "#AD58B4"}).
+		Foreground(lipgloss.AdaptiveColor{Light: "#EE6FF8", Dark: "#EE6FF8"}).
+		Padding(0, 0, 0, 1)
+
 	delegate := list.NewDefaultDelegate()
 	delegate.ShowDescription = false
 	delegate.SetSpacing(0)
+	delegate.Styles.SelectedTitle = selectedTitleStyle
+	delegate.Styles.NormalTitle = normalTitleStyle
 
 	m := Model{
 		list: list.New(items, delegate, 0, 0),
@@ -46,6 +63,10 @@ func New(cmdHist []string) Model {
 
 	m.list.ResetSelected()
 	m.active = true
+	m.height = 0
+	m.width = 0
+
+	m.GoToLastItem()
 
 	return m
 }
@@ -79,10 +100,6 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	}
 
 	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		// h, v := docStyle.GetFrameSize()
-		m.list.SetSize(20, 10)
-
 	case events.SendMsg:
 		if !msg.FromCmdHist {
 			m.AddCmd(msg.Data)
@@ -94,7 +111,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, keymap.Default.DeleteCmdKey):
-			// TODO
+			m.list.RemoveItem(m.list.Index())
 			return m, nil
 
 		case key.Matches(msg, keymap.Default.ToggleHistKey, keymap.Default.ResetKey):
@@ -127,8 +144,10 @@ func SendCmdExecutedMsg(cmd string) tea.Cmd {
 func (m Model) View() string {
 	var vp viewport.Model
 
-	// TODO HIER WEITER ANSICHT IN VIEWPORT PACKEN
-	return docStyle.Render(m.list.View())
+	vp.Height = m.height - 2
+	vp.Width = m.width - 2
+	vp.SetContent(lipgloss.NewStyle().Width(m.width - 2).Render(m.list.View()))
+	return styles.AddBorder(vp, "History", "")
 }
 
 // Add a new command to the command history. The command will only be added, if not
@@ -165,6 +184,12 @@ func (m Model) GetCmdHist() []string {
 		}
 	}
 	return cmds
+}
+
+func (m *Model) SetSize(width int, height int) {
+	m.width = width
+	m.height = height
+	m.list.SetSize(width-2, height-2)
 }
 
 func (m *Model) GoToLastItem() {

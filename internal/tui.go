@@ -175,13 +175,13 @@ func (m *model) updateLayout() {
 		msgLogWidth = m.width
 	}
 
-	// cmdHistWidth := m.width - msgLogWidth
+	cmdHistWidth := m.width - msgLogWidth
 
 	m.footer.SetWidth(m.width)
 	m.input.SetWidth(m.width)
 
 	m.msglog.SetSize(msgLogWidth, viewportsHeight)
-	// m.cmdhist.SetSize(cmdHistWidth, viewportsHeight)
+	m.cmdhist.SetSize(cmdHistWidth, viewportsHeight)
 }
 
 func RunTui(port *io.ReadWriteCloser, mode serial.Mode, flags Flags, config Config, serialLog *log.Logger) {
