@@ -1,11 +1,16 @@
 package cmdhist
 
 import (
+	"fmt"
+	"io"
+	"strings"
+
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	zone "github.com/lrstanley/bubblezone"
 	"github.com/mahlburgc/teaterm/events"
 	"github.com/mahlburgc/teaterm/internal/keymap"
 	"github.com/mahlburgc/teaterm/internal/styles"
@@ -27,6 +32,21 @@ func (i item) Title() string       { return i.title }
 func (i item) Description() string { return i.desc }
 func (i item) FilterValue() string { return i.title }
 
+// cmdDelegate implements list.ItemDelegate to support bubblezone marking.
+type cmdDelegate struct {
+	list.DefaultDelegate
+}
+
+func (d cmdDelegate) Render(w io.Writer, m list.Model, index int, listItem list.Item) {
+	// To preserve the default filtering highlights, we capture the output of the
+	// standard Render method into a buffer, then wrap the result in a zone.
+	var buf strings.Builder
+	d.DefaultDelegate.Render(&buf, m, index, listItem)
+
+	// Mark the rendered string with a unique ID for this index.
+	fmt.Fprint(w, zone.Mark(fmt.Sprintf("hist-item-%d", index), buf.String()))
+}
+
 func New(cmdHist []string) Model {
 	items := make([]list.Item, len(cmdHist))
 	for i, cmd := range cmdHist {
@@ -45,11 +65,14 @@ func New(cmdHist []string) Model {
 		Foreground(lipgloss.AdaptiveColor{Light: "#EE6FF8", Dark: "#EE6FF8"}).
 		Padding(0, 0, 0, 1)
 
-	delegate := list.NewDefaultDelegate()
-	delegate.ShowDescription = false
-	delegate.SetSpacing(0)
-	delegate.Styles.SelectedTitle = selectedTitleStyle
-	delegate.Styles.NormalTitle = normalTitleStyle
+	// Create our custom delegate that wraps the default styles
+	baseDelegate := list.NewDefaultDelegate()
+	baseDelegate.ShowDescription = false
+	baseDelegate.SetSpacing(0)
+	baseDelegate.Styles.SelectedTitle = selectedTitleStyle
+	baseDelegate.Styles.NormalTitle = normalTitleStyle
+
+	delegate := cmdDelegate{DefaultDelegate: baseDelegate}
 
 	m := Model{
 		list: list.New(items, delegate, 0, 0),
@@ -87,6 +110,22 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.active = false
 		}
 		return m, nil
+
+	case tea.MouseMsg:
+		if msg.Button == tea.MouseButtonLeft {
+			for i := 0; i < len(m.list.Items()); i++ {
+				if zone.Get(fmt.Sprintf("hist-item-%d", i)).InBounds(msg) {
+					if msg.Action == tea.MouseActionRelease {
+						if itm, ok := m.list.Items()[i].(item); ok {
+							return m, SendCmdExecutedMsg(itm.title)
+						}
+					} else {
+						m.list.Select(i)
+						return m, nil
+					}
+				}
+			}
+		}
 	}
 
 	// do not handle any other events during inactive state
