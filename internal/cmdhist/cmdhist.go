@@ -1,6 +1,7 @@
 package cmdhist
 
 import (
+	"fmt"
 	"log"
 	"strconv"
 	"strings"
@@ -95,7 +96,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, keymap.Default.DeleteCmdKey):
-			return m, m.deleteCmd() // TODO
+			return m, m.deleteCmd() // TODO fix command deletion
 
 		case key.Matches(msg, keymap.Default.HistUpKey):
 			return m, m.scrollUp()
@@ -203,7 +204,11 @@ func SendCmdExecutedMsg(cmd string) tea.Cmd {
 
 // View renders the model's view.
 func (m Model) View() string {
-	return styles.AddBorder(m.Vp, "Commands", "")
+	nrFilteredCmds := len(m.cmdHistFiltered)
+	nrCmds := len(m.cmdHist)
+	footer := fmt.Sprintf("%v/%v", nrFilteredCmds, nrCmds)
+
+	return styles.AddBorder(m.Vp, "Commands", footer)
 }
 
 func (m *Model) SetSize(width, height int) {
