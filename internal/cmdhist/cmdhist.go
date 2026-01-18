@@ -158,10 +158,10 @@ func (m *Model) runFuzzySearch(msg string) {
 	if msg == "" {
 		m.cmdHistFiltered = m.cmdHist
 	} else {
-		matches := fuzzy.FindNoSort(msg, m.cmdHist)
+		matches := fuzzy.Find(msg, m.cmdHist)
 		m.cmdHistFiltered = make([]string, len(matches))
 		for i, match := range matches {
-			m.cmdHistFiltered[i] = match.Str
+			m.cmdHistFiltered[len(matches)-1-i] = match.Str
 		}
 	}
 	// log.Printf("Filetered command list: %v", m.cmdHistFiltered)
