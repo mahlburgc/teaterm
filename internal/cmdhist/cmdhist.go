@@ -281,10 +281,33 @@ func (m *Model) updateCmdHistView() (c tea.Cmd) {
 
 // Delete cmd from command history and reset cmd hist index.
 func (m *Model) deleteCmd() (c tea.Cmd) {
-	if m.cmdHistIndex != len(m.cmdHist) {
-		m.cmdHist = append(m.cmdHist[:m.cmdHistIndex], m.cmdHist[m.cmdHistIndex+1:]...)
-		c = m.ResetVp(true)
-		log.Printf("command will be deleted! New Command list: %v", m.cmdHist)
+	// Check if index is valid within the currently visible (filtered) list
+	if m.cmdHistIndex >= 0 && m.cmdHistIndex < len(m.cmdHistFiltered) {
+		// 1. Identify the command to delete
+		cmdToDelete := m.cmdHistFiltered[m.cmdHistIndex]
+
+		// 2. Remove from Filtered List
+		m.cmdHistFiltered = append(m.cmdHistFiltered[:m.cmdHistIndex], m.cmdHistFiltered[m.cmdHistIndex+1:]...)
+
+		// 3. Remove from Main History List
+		// We iterate to find the matching string in the main list
+		for i, cmd := range m.cmdHist {
+			if cmd == cmdToDelete {
+				m.cmdHist = append(m.cmdHist[:i], m.cmdHist[i+1:]...)
+				break // Stop after finding the match
+			}
+		}
+
+		// 4. Adjust Index
+		// If we deleted the last item, move index up by one
+		if m.cmdHistIndex >= len(m.cmdHistFiltered) && m.cmdHistIndex > 0 {
+			m.cmdHistIndex--
+		}
+
+		log.Printf("Command deleted: %s", cmdToDelete)
+
+		// 5. Update the view to reflect the deletion without losing the current search context
+		c = m.updateCmdHistView()
 	}
 	return c
 }
