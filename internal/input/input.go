@@ -80,17 +80,15 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		default:
 			// Ta input may changed, broadcast current ta input.
 			var partialTxMsgCmd tea.Cmd
-			if m.ta.Length() > 0 {
-				inputVal := m.ta.Value()
-				partialTxMsgCmd = func() tea.Msg {
-					return events.PartialTxMsg(inputVal)
-				}
-				return m, tea.Batch(cmd, partialTxMsgCmd)
-			} else {
+			inputVal := m.ta.Value()
+			partialTxMsgCmd = func() tea.Msg {
+				return events.PartialTxMsg(inputVal)
+			}
+			if m.ta.Length() == 0 {
 				m.inputSuggestion = "" // Clear suggestion if input is empty.
 			}
+			return m, tea.Batch(cmd, partialTxMsgCmd)
 		}
-		return m, cmd
 	}
 
 	switch msg := msg.(type) {
@@ -137,6 +135,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if string(msg) != "" {
 			m.SetValue(string(msg))
 			return m, nil
+		} else {
+			return m, m.Reset()
 		}
 
 	// new input suggestion received from cmd history

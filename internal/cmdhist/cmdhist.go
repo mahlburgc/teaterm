@@ -13,16 +13,18 @@ import (
 	"github.com/mahlburgc/teaterm/events"
 	"github.com/mahlburgc/teaterm/internal/keymap"
 	"github.com/mahlburgc/teaterm/internal/styles"
+	"github.com/sahilm/fuzzy"
 )
 
 const scrollPadding = 3
 
 type Model struct {
-	Vp           viewport.Model
-	SelectStyle  lipgloss.Style
-	cmdHist      []string
-	cmdHistIndex int
-	active       bool
+	Vp              viewport.Model
+	SelectStyle     lipgloss.Style
+	cmdHist         []string
+	cmdHistIndex    int
+	active          bool
+	cmdHistFiltered []string
 }
 
 // New creates a new model with default settings.
@@ -47,17 +49,10 @@ func New(cmdHist []string) (m Model) {
 			m.cmdHist = append(m.cmdHist, cmd)
 		}
 	}
+	m.cmdHistFiltered = m.cmdHist
 	m.active = true
 
 	return m
-}
-
-func (m Model) GetIndex() int {
-	return m.cmdHistIndex
-}
-
-func (m Model) GetHistLen() int {
-	return len(m.cmdHist)
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
@@ -67,14 +62,14 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case events.ConnectionStatusMsg:
 		switch msg.Status {
 		case events.Disconnected:
-			m.ResetVp()
+			m.ResetVp(true)
 			m.active = false
 
 		case events.Connected:
 			m.active = true
 
 		case events.Connecting:
-			m.ResetVp()
+			m.ResetVp(true)
 			m.active = false
 		}
 		return m, cmd
@@ -94,12 +89,13 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 
 	case events.PartialTxMsg:
+		m.runFuzzySearch(string(msg))
 		return m, m.findCmd(string(msg))
 
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, keymap.Default.DeleteCmdKey):
-			return m, m.deleteCmd()
+			return m, m.deleteCmd() // TODO
 
 		case key.Matches(msg, keymap.Default.HistUpKey):
 			return m, m.scrollUp()
@@ -108,7 +104,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, m.scrollDown()
 
 		case key.Matches(msg, keymap.Default.ToggleHistKey, keymap.Default.ResetKey):
-			return m, m.ResetVp()
+			return m, m.ResetVp(true)
 
 		default:
 			return m, nil
@@ -119,7 +115,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		// directly used as index for the cmd history
 		// Check on which cmd the mouse action is performed
 		var cmdSelected bool
-		for i := range m.cmdHist {
+		for i := range m.cmdHistFiltered {
 			if zone.Get(strconv.Itoa(i)).InBounds(msg) {
 				m.cmdHistIndex = i
 				cmdSelected = true
@@ -135,13 +131,13 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if msg.Button == tea.MouseButtonRight ||
 			msg.Action == tea.MouseActionPress ||
 			msg.Action == tea.MouseActionMotion ||
-			m.cmdHistIndex == len(m.cmdHist) {
+			m.cmdHistIndex == len(m.cmdHistFiltered) {
 			return m, m.updateCmdHistView()
 		}
 
 		if msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionRelease {
-			cmd = SendCmdExecutedMsg(m.cmdHist[m.cmdHistIndex])
-			m.cmdHistIndex = len(m.cmdHist)
+			cmd = SendCmdExecutedMsg(m.cmdHistFiltered[m.cmdHistIndex])
+			m.cmdHistIndex = len(m.cmdHistFiltered)
 			m.updateCmdHistView()
 			return m, cmd
 		}
@@ -155,6 +151,21 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+func (m *Model) runFuzzySearch(msg string) {
+	if msg == "" {
+		m.cmdHistFiltered = m.cmdHist
+	} else {
+		matches := fuzzy.Find(msg, m.cmdHist)
+		m.cmdHistFiltered = make([]string, len(matches))
+		for i, match := range matches {
+			m.cmdHistFiltered[i] = match.Str
+		}
+	}
+	// log.Printf("Filetered command list: %v", m.cmdHistFiltered)
+
+	m.ResetVp(false)
 }
 
 func (m *Model) findCmd(msg string) tea.Cmd {
@@ -201,7 +212,7 @@ func (m *Model) SetSize(width, height int) {
 	m.Vp.Width = width - borderWidth
 	m.Vp.Height = height - borderHeight
 
-	m.ResetVp()
+	m.ResetVp(false)
 }
 
 // TODO (cma): if hight is too low, selected command is not shown
@@ -223,14 +234,14 @@ func (m *Model) scrollUp() tea.Cmd {
 
 // scrollDown moves selection down and handles scroll padding at the bottom.
 func (m *Model) scrollDown() (c tea.Cmd) {
-	if m.cmdHistIndex < len(m.cmdHist) {
+	if m.cmdHistIndex < len(m.cmdHistFiltered) {
 		m.cmdHistIndex++
 
-		if m.cmdHistIndex < len(m.cmdHist) {
+		if m.cmdHistIndex < len(m.cmdHistFiltered) {
 			bottomEdge := m.Vp.YOffset + m.Vp.Height - 1
 
 			// If index enters the bottom padding zone, scroll viewport down.
-			if m.cmdHistIndex > bottomEdge-scrollPadding && m.Vp.YOffset+m.Vp.Height < len(m.cmdHist) {
+			if m.cmdHistIndex > bottomEdge-scrollPadding && m.Vp.YOffset+m.Vp.Height < len(m.cmdHistFiltered) {
 				m.Vp.ScrollDown(1)
 			} else if m.cmdHistIndex > bottomEdge {
 				// Safety fallback: if we are strictly below the view, snap to it.
@@ -242,15 +253,15 @@ func (m *Model) scrollDown() (c tea.Cmd) {
 		}
 		c = m.updateCmdHistView()
 	}
-	return c
+	return m.updateCmdHistView()
 }
 
 func (m *Model) updateCmdHistView() (c tea.Cmd) {
-	cmdHistLines := make([]string, len(m.cmdHist))
-	for i, cmd := range m.cmdHist {
+	cmdHistLines := make([]string, len(m.cmdHistFiltered))
+	for i, cmd := range m.cmdHistFiltered {
 		if i == m.cmdHistIndex {
 			cmdHistLines[i] = zone.Mark(strconv.Itoa(i), m.SelectStyle.Render("> "+cmd))
-			c = SendCmdSelectedMsg(m.cmdHist[m.cmdHistIndex])
+			c = SendCmdSelectedMsg(m.cmdHistFiltered[m.cmdHistIndex])
 		} else {
 			cmdHistLines[i] = zone.Mark(strconv.Itoa(i), cmd)
 		}
@@ -267,17 +278,20 @@ func (m *Model) updateCmdHistView() (c tea.Cmd) {
 func (m *Model) deleteCmd() (c tea.Cmd) {
 	if m.cmdHistIndex != len(m.cmdHist) {
 		m.cmdHist = append(m.cmdHist[:m.cmdHistIndex], m.cmdHist[m.cmdHistIndex+1:]...)
-		c = m.ResetVp()
+		c = m.ResetVp(true)
 		log.Printf("command will be deleted! New Command list: %v", m.cmdHist)
 	}
 	return c
 }
 
-func (m *Model) ResetVp() (c tea.Cmd) {
-	// log.Printf("reset cmd vp: vp height, msg len: %v, %v\n", m.Vp.Height, len(m.cmdHist))
+func (m *Model) ResetVp(resetFilter bool) (c tea.Cmd) {
+	log.Printf("reset cmd vp: vp height, msg len: %v, %v\n", m.Vp.Height, len(m.cmdHist))
 
 	if m.Vp.Height > 0 {
-		m.cmdHistIndex = len(m.cmdHist)
+		if resetFilter {
+			m.cmdHistFiltered = m.cmdHist
+		}
+		m.cmdHistIndex = len(m.cmdHistFiltered)
 		c = m.updateCmdHistView()
 		m.Vp.GotoBottom()
 	}
@@ -303,7 +317,7 @@ func (m *Model) AddCmd(newCmd string) (c tea.Cmd) {
 		m.cmdHist = append(m.cmdHist, newCmd)
 	}
 
-	return m.ResetVp()
+	return m.ResetVp(true)
 }
 
 func (m Model) GetCmdHist() []string {
