@@ -158,7 +158,7 @@ func (m *Model) runFuzzySearch(msg string) {
 	if msg == "" {
 		m.cmdHistFiltered = m.cmdHist
 	} else {
-		matches := fuzzy.Find(msg, m.cmdHist)
+		matches := fuzzy.FindNoSort(msg, m.cmdHist)
 		m.cmdHistFiltered = make([]string, len(matches))
 		for i, match := range matches {
 			m.cmdHistFiltered[i] = match.Str
