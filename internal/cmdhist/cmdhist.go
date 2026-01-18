@@ -15,6 +15,8 @@ import (
 	"github.com/mahlburgc/teaterm/internal/styles"
 )
 
+const scrollPadding = 3
+
 type Model struct {
 	Vp           viewport.Model
 	SelectStyle  lipgloss.Style
@@ -202,29 +204,41 @@ func (m *Model) SetSize(width, height int) {
 	m.ResetVp()
 }
 
-// Scroll up cmd view.
+// TODO (cma): if hight is too low, selected command is not shown
+// scrollUp moves selection up and handles scroll padding at the top.
 func (m *Model) scrollUp() tea.Cmd {
 	if m.cmdHistIndex > 0 {
 		m.cmdHistIndex--
-	}
-	if m.cmdHistIndex < m.Vp.YOffset {
-		m.Vp.ScrollUp(1)
+
+		// If index enters the top padding zone, scroll the viewport up.
+		if m.cmdHistIndex < m.Vp.YOffset+scrollPadding && m.Vp.YOffset > 0 {
+			m.Vp.ScrollUp(1)
+		} else if m.cmdHistIndex < m.Vp.YOffset {
+			// Safety fallback: if we are strictly above the view, snap to it.
+			m.Vp.SetYOffset(m.cmdHistIndex)
+		}
 	}
 	return m.updateCmdHistView()
 }
 
-// Scroll down cmd view.
+// scrollDown moves selection down and handles scroll padding at the bottom.
 func (m *Model) scrollDown() (c tea.Cmd) {
 	if m.cmdHistIndex < len(m.cmdHist) {
 		m.cmdHistIndex++
+
 		if m.cmdHistIndex < len(m.cmdHist) {
-			// The bottom-most visible line is at YOffset + Height - 1.
 			bottomEdge := m.Vp.YOffset + m.Vp.Height - 1
-			// If the selection is now below the visible area of the viewport,
-			// scroll the viewport down to keep it in view.
-			if m.cmdHistIndex > bottomEdge {
+
+			// If index enters the bottom padding zone, scroll viewport down.
+			if m.cmdHistIndex > bottomEdge-scrollPadding && m.Vp.YOffset+m.Vp.Height < len(m.cmdHist) {
 				m.Vp.ScrollDown(1)
+			} else if m.cmdHistIndex > bottomEdge {
+				// Safety fallback: if we are strictly below the view, snap to it.
+				m.Vp.SetYOffset(m.cmdHistIndex - m.Vp.Height + 1)
 			}
+		} else {
+			// Selection reached the empty end prompt
+			m.Vp.GotoBottom()
 		}
 		c = m.updateCmdHistView()
 	}
@@ -247,8 +261,6 @@ func (m *Model) updateCmdHistView() (c tea.Cmd) {
 	m.Vp.SetContent(lipgloss.NewStyle().Render(strings.Join(cmdHistLines, "\n")))
 
 	return c
-	// m.inputTa.SetValue(m.cmdHist[m.cmdHistIndex])
-	// m.inputTa.SetCursor(len(m.inputTa.Value()))
 }
 
 // Delete cmd from command history and reset cmd hist index.
