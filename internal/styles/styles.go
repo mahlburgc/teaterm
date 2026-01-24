@@ -24,6 +24,7 @@ var (
 	BlurredPromtStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	HelpOverlayBorderStyle  = lipgloss.NewStyle().Border(lipgloss.RoundedBorder(), true).
 				BorderForeground(lipgloss.Color("6")).Padding(0, 1, 1)
+	PercentRenderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 )
 
 // Adds a border with title to viewport and returns viewport string.

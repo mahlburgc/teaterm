@@ -33,6 +33,7 @@ type Model struct {
 	infoPrefix    string
 	showEscapes   bool
 	logLimit      int
+	msgCnt        int // rx and tx messages during one session
 }
 
 // This message is sent when the editor is closed.
@@ -73,6 +74,7 @@ func New(showTimestamp bool, showEscapes bool, sendStyle lipgloss.Style,
 	m.serialLog = serialLog
 	m.showEscapes = showEscapes
 	m.logLimit = logLimit
+	m.msgCnt = 0
 
 	m.sendStyle = sendStyle
 	m.errStyle = errStyle
@@ -161,16 +163,12 @@ func (m Model) View() string {
 	if m.Vp.AtBottom() {
 		percentRenderStyle = borderStyle
 	} else {
-		percentRenderStyle = styles.CursorStyle
+		percentRenderStyle = styles.PercentRenderStyle
 	}
-
-	log.Printf("msglog: scrollperc: %v\n", m.Vp.ScrollPercent()*100)
-	log.Printf("msglog: scrollperctransformed: %v\n", scrollPercentage)
-	log.Printf("msglog: scrollperctransformedint: %v\n", int(scrollPercentage))
 
 	scrollPercentageString := percentRenderStyle.Render(fmt.Sprintf("%3d%%", int(scrollPercentage)))
 
-	footer := borderStyle.Render(fmt.Sprintf("%v/%v, ", m.GetLen(), m.logLimit)) + scrollPercentageString
+	footer := borderStyle.Render(fmt.Sprintf("%d ", m.msgCnt)) + scrollPercentageString
 	return styles.AddBorder(m.Vp, "Messages", footer, true)
 }
 
@@ -194,12 +192,14 @@ func (m *Model) addMsg(msg string, msgType int) {
 	switch msgType {
 	case txMsg:
 		line.WriteString(m.txPrefix)
+		m.msgCnt++
 	case errMsg:
 		line.WriteString(m.errPrefix)
 	case infoMsg:
 		line.WriteString(m.infoPrefix)
 	default:
 		line.WriteString(m.rxPrefix)
+		m.msgCnt++
 	}
 
 	if m.showEscapes {
