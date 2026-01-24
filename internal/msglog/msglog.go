@@ -46,6 +46,8 @@ const (
 	infoMsg
 )
 
+const defaultLogLimit = 20000
+
 // New creates a new model with default settings.
 func New(showTimestamp bool, showEscapes bool, sendStyle lipgloss.Style,
 	errStyle lipgloss.Style, infoStyle lipgloss.Style, serialLog *log.Logger,
@@ -70,6 +72,7 @@ func New(showTimestamp bool, showEscapes bool, sendStyle lipgloss.Style,
 	m.errPrefix = "ERROR: "
 	m.infoPrefix = "INFO: "
 	m.serialLog = serialLog
+	m.showEscapes = showEscapes
 
 	m.sendStyle = sendStyle
 	m.errStyle = errStyle
@@ -182,9 +185,9 @@ func (m *Model) addMsg(msg string, msgType int) {
 	}
 
 	if m.showEscapes {
-		line.WriteString(fmt.Sprintf("%q", msg))
-	} else {
 		line.WriteString(stringsx.Clean(msg))
+	} else {
+		line.WriteString(msg) // fmt.Printf("%q", msg")
 	}
 
 	if m.serialLog != nil {
