@@ -32,6 +32,7 @@ type Model struct {
 	errPrefix     string
 	infoPrefix    string
 	showEscapes   bool
+	logLimit      int
 }
 
 // This message is sent when the editor is closed.
@@ -46,11 +47,9 @@ const (
 	infoMsg
 )
 
-const defaultLogLimit = 20000
-
 // New creates a new model with default settings.
 func New(showTimestamp bool, showEscapes bool, sendStyle lipgloss.Style,
-	errStyle lipgloss.Style, infoStyle lipgloss.Style, serialLog *log.Logger,
+	errStyle lipgloss.Style, infoStyle lipgloss.Style, serialLog *log.Logger, logLimit int,
 ) (m Model) {
 	// Serial viewport contains all sent and received messages.
 	// We will create a viewport without border and later manually
@@ -73,6 +72,7 @@ func New(showTimestamp bool, showEscapes bool, sendStyle lipgloss.Style,
 	m.infoPrefix = "INFO: "
 	m.serialLog = serialLog
 	m.showEscapes = showEscapes
+	m.logLimit = logLimit
 
 	m.sendStyle = sendStyle
 	m.errStyle = errStyle
@@ -152,7 +152,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 }
 
 func (m Model) View() string {
-	footer := fmt.Sprintf("%v, %3.f%%", m.GetLen(), m.GetScrollPercent())
+	footer := fmt.Sprintf("%v/%v, %3.f%%", m.GetLen(), m.logLimit, m.GetScrollPercent())
 	return styles.AddBorder(m.Vp, "Messages", footer)
 }
 
@@ -194,7 +194,6 @@ func (m *Model) addMsg(msg string, msgType int) {
 		m.serialLog.Println(line.String())
 	}
 
-	// TODO set serial message histrory limit, remove oldest if exceed
 	switch msgType {
 	case txMsg:
 		m.log = append(m.log, m.sendStyle.Render(line.String()))
@@ -203,7 +202,12 @@ func (m *Model) addMsg(msg string, msgType int) {
 	case infoMsg:
 		m.log = append(m.log, m.infoStyle.Render(line.String()))
 	default:
-		m.log = append(m.log, lipgloss.NewStyle().Render(line.String()))
+		m.log = append(m.log, line.String())
+	}
+
+	// message histrory limit, remove oldest if exceed
+	if len(m.log) > m.logLimit {
+		m.log = m.log[len(m.log)-m.logLimit:]
 	}
 
 	m.UpdateVp()
@@ -212,12 +216,11 @@ func (m *Model) addMsg(msg string, msgType int) {
 func (m *Model) UpdateVp() {
 	if m.Vp.Height > 0 && len(m.log) > 0 {
 		// reset viewport only if we did not scrolled up in msg history
-		goToBottom := m.Vp.ScrollPercent() == 1
-		m.Vp.SetContent(lipgloss.NewStyle().Render(strings.Join(m.log, "\n")))
-		if goToBottom {
+		atBottom := m.Vp.AtBottom()                // do not use scroll percentage as this does not work reliable
+		m.Vp.SetContent(strings.Join(m.log, "\n")) // TODO performance improvements possible
+		if atBottom {
 			m.Vp.GotoBottom()
 		}
-
 	}
 }
 
