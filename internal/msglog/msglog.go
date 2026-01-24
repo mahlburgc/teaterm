@@ -152,8 +152,26 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 }
 
 func (m Model) View() string {
-	footer := fmt.Sprintf("%v/%v, %3.f%%", m.GetLen(), m.logLimit, m.GetScrollPercent())
-	return styles.AddBorder(m.Vp, "Messages", footer)
+	// mark scroll percentage if we are not at bottom
+	// also, if we are not at bottom but at 100 percent scroll
+	// map 100 percent to 99 percent for better user experience
+	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("242"))
+	var percentRenderStyle lipgloss.Style
+	scrollPercentage := m.GetScrollPercent()
+	if m.Vp.AtBottom() {
+		percentRenderStyle = borderStyle
+	} else {
+		percentRenderStyle = styles.CursorStyle
+	}
+
+	log.Printf("msglog: scrollperc: %v\n", m.Vp.ScrollPercent()*100)
+	log.Printf("msglog: scrollperctransformed: %v\n", scrollPercentage)
+	log.Printf("msglog: scrollperctransformedint: %v\n", int(scrollPercentage))
+
+	scrollPercentageString := percentRenderStyle.Render(fmt.Sprintf("%3d%%", int(scrollPercentage)))
+
+	footer := borderStyle.Render(fmt.Sprintf("%v/%v, ", m.GetLen(), m.logLimit)) + scrollPercentageString
+	return styles.AddBorder(m.Vp, "Messages", footer, true)
 }
 
 func (m *Model) SetSize(width, height int) {
@@ -249,9 +267,11 @@ func openEditorCmd(content []string) tea.Cmd {
 	}
 
 	// Write the viewport content to the temp file.
-	if _, err := tmpFile.WriteString(stripansi.Strip(strings.Join(content, "\n") + "\n")); err != nil {
-		return func() tea.Msg {
-			return EditorFinishedMsg{err: err}
+	for _, line := range content {
+		if _, err = tmpFile.WriteString(stripansi.Strip(line) + "\n"); err != nil {
+			return func() tea.Msg {
+				return EditorFinishedMsg{err: err}
+			}
 		}
 	}
 

@@ -27,7 +27,7 @@ var (
 )
 
 // Adds a border with title to viewport and returns viewport string.
-func AddBorder(vp viewport.Model, title string, footer string) string {
+func AddBorder(vp viewport.Model, title string, footer string, ownFooterStyle bool) string {
 	border := FocusedBorderStyle.GetBorderStyle()
 	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("242"))
 
@@ -60,8 +60,13 @@ func AddBorder(vp viewport.Model, title string, footer string) string {
 	if footer == "" {
 		vpFooter = ""
 	} else {
-		vpFooter = borderStyle.Render(border.MiddleRight + " " + footer + " " +
-			border.MiddleLeft + border.Bottom)
+		if ownFooterStyle {
+			vpFooter = borderStyle.Render(border.MiddleRight) + " " + footer + " " +
+				borderStyle.Render(border.MiddleLeft) + borderStyle.Render(border.Bottom)
+		} else {
+			vpFooter = borderStyle.Render(border.MiddleRight + " " + footer + " " +
+				border.MiddleLeft + border.Bottom)
+		}
 		// Remove footer if width is too low
 		if lipgloss.Width(vpFooter) > vp.Width {
 			vpFooter = ""

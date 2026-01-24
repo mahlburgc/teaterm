@@ -208,7 +208,7 @@ func (m Model) View() string {
 	nrCmds := len(m.cmdHist)
 	footer := fmt.Sprintf("%v/%v", nrFilteredCmds, nrCmds)
 
-	return styles.AddBorder(m.Vp, "Commands", footer)
+	return styles.AddBorder(m.Vp, "Commands", footer, false)
 }
 
 func (m *Model) SetSize(width, height int) {

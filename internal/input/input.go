@@ -216,7 +216,7 @@ func (m Model) View() string {
 	// log.Printf("width: %v, ta.width: %v\n", m.width, m.ta.Width())
 	// log.Printf("m.ta.Value: %v\n", m.ta.Value())
 	// log.Printf("conntent: %s\n", content)
-	return styles.AddBorder(vp, "", "")
+	return styles.AddBorder(vp, "", "", false)
 }
 
 func (m *Model) SetWidth(width int) {
