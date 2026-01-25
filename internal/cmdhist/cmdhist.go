@@ -32,7 +32,7 @@ type Model struct {
 // Command history can be passed to start with existing commands.
 func New(cmdHist []string) (m Model) {
 	m.Vp = viewport.New(30, 5)
-	m.SelectStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+	m.SelectStyle = styles.SelectedCmdStyle
 	m.cmdHistIndex = len(m.cmdHist)
 
 	// Disable the viewport's default up/down key handling.
@@ -212,7 +212,7 @@ func (m Model) View() string {
 }
 
 func (m *Model) SetSize(width, height int) {
-	borderWidth, borderHeight := styles.FocusedBorderStyle.GetFrameSize()
+	borderWidth, borderHeight := styles.BorderStyle.GetFrameSize()
 
 	m.Vp.Width = width - borderWidth
 	m.Vp.Height = height - borderHeight
