@@ -15,6 +15,9 @@ type Model struct {
 func New() (m Model) {
 	m.help = help.New()
 	m.help.ShowAll = false
+	m.help.Styles.ShortKey = styles.HelpKey
+	m.help.Styles.ShortDesc = styles.HelpDesc
+	m.help.Styles.ShortSeparator = styles.HelpSep
 	return m
 }
 
@@ -29,6 +32,7 @@ func (m Model) GetHeight() int {
 func (m Model) View(connection string) string {
 	helpText := " | "
 	m.help.Width = m.width - lipgloss.Width(connection) - lipgloss.Width(helpText)
+
 	helpText += m.help.View(keymap.Default)
 
 	return lipgloss.NewStyle().MaxWidth(m.width).Render(connection +

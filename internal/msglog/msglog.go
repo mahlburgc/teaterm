@@ -158,7 +158,7 @@ func (m Model) View() string {
 	// mark scroll percentage if we are not at bottom
 	// also, if we are not at bottom but at 100 percent scroll
 	// map 100 percent to 99 percent for better user experience
-	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("242"))
+	borderStyle := lipgloss.NewStyle().Foreground(styles.AdaptiveBorderColor)
 	var percentRenderStyle lipgloss.Style
 	scrollPercentage := m.GetScrollPercent()
 	if m.Vp.AtBottom() {
@@ -174,7 +174,7 @@ func (m Model) View() string {
 }
 
 func (m *Model) SetSize(width, height int) {
-	borderWidth, borderHeight := styles.FocusedBorderStyle.GetFrameSize()
+	borderWidth, borderHeight := styles.BorderStyle.GetFrameSize()
 
 	m.Vp.Width = width - borderWidth
 	m.Vp.Height = height - borderHeight

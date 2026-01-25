@@ -8,30 +8,42 @@ import (
 )
 
 var (
-	CursorStyle             = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
-	ConnectSymbolStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("77"))
-	DisconnectedSymbolStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("124"))
-	FocusedPlaceholderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	FocusedBorderStyle      = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("242"))
-	BlurredBorderStyle      = FocusedBorderStyle
-	SelectedCmdStyle        = CursorStyle
-	SpinnerStyle            = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
-	VpTxMsgStyle            = CursorStyle
-	ErrMsgStyle             = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	InfoMsgStyle            = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	FooterStyle             = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	FocusedPromtStyle       = CursorStyle
-	BlurredPromtStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	AdaptiveGray         = lipgloss.AdaptiveColor{Light: "#464646", Dark: "#818080"}
+	AdaptiveGrayInverted = lipgloss.AdaptiveColor{Light: AdaptiveGray.Dark, Dark: AdaptiveGray.Light}
+	AdaptivePink         = lipgloss.AdaptiveColor{Light: "#9f008f", Dark: "#f943e3"}
+	AdaptiveCyan         = lipgloss.AdaptiveColor{Light: "#006362", Dark: "#96ffec"}
+	AdaptiveGreen        = lipgloss.AdaptiveColor{Light: "#41ab00", Dark: "#6cff11"}
+	AdaptiveRed          = lipgloss.AdaptiveColor{Light: "#8f0000", Dark: "#be0000"}
+	AdaptiveBorderColor  = AdaptiveGray
+
+	CursorStyle = lipgloss.NewStyle().Foreground(AdaptivePink)
+
+	ConnectSymbolStyle = lipgloss.NewStyle().Foreground(AdaptiveGreen)
+
+	DisconnectedSymbolStyle = lipgloss.NewStyle().Foreground(AdaptiveRed)
+	FocusedPlaceholderStyle = lipgloss.NewStyle().Foreground(AdaptiveGray)
+	BorderStyle             = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(AdaptiveBorderColor)
+	SelectedCmdStyle        = lipgloss.NewStyle().Foreground(AdaptivePink)
+	SpinnerStyle            = lipgloss.NewStyle().Foreground(AdaptivePink)
+	VpTxMsgStyle            = lipgloss.NewStyle().Foreground(AdaptivePink)
+	ErrMsgStyle             = lipgloss.NewStyle().Foreground(AdaptiveGray)
+	InfoMsgStyle            = lipgloss.NewStyle().Foreground(AdaptiveGray)
+	FooterStyle             = lipgloss.NewStyle().Foreground(AdaptiveGray)
+	FocusedPromtStyle       = lipgloss.NewStyle().Foreground(AdaptivePink)
+	BlurredPromtStyle       = lipgloss.NewStyle().Foreground(AdaptiveGray)
 	HelpOverlayBorderStyle  = lipgloss.NewStyle().Border(lipgloss.RoundedBorder(), true).
-				BorderForeground(lipgloss.Color("6")).Padding(0, 1, 1)
-	PercentRenderStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
-	MsgLogStartRenderStyle = InfoMsgStyle
+				BorderForeground(AdaptiveCyan).Padding(0, 1, 1)
+	PercentRenderStyle     = lipgloss.NewStyle().Foreground(AdaptiveCyan)
+	MsgLogStartRenderStyle = lipgloss.NewStyle().Foreground(AdaptiveGray)
+	HelpKey                = lipgloss.NewStyle().Foreground(AdaptiveGray)
+	HelpDesc               = lipgloss.NewStyle().Foreground(AdaptiveGrayInverted)
+	HelpSep                = lipgloss.NewStyle().Foreground(AdaptiveGrayInverted)
 )
 
 // Adds a border with title to viewport and returns viewport string.
 func AddBorder(vp viewport.Model, title string, footer string, ownFooterStyle bool) string {
-	border := FocusedBorderStyle.GetBorderStyle()
-	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("242"))
+	border := BorderStyle.GetBorderStyle()
+	borderStyle := lipgloss.NewStyle().Foreground(AdaptiveBorderColor)
 
 	var vpTitle string
 
@@ -53,7 +65,7 @@ func AddBorder(vp viewport.Model, title string, footer string, ownFooterStyle bo
 		vpTitle,
 		borderStyle.
 			Render(strings.Repeat(border.Top, max(0, vp.Width-lipgloss.
-				Width(vpTitle)+FocusedBorderStyle.GetHorizontalPadding()))),
+				Width(vpTitle)+BorderStyle.GetHorizontalPadding()))),
 		borderStyle.Render(border.TopRight),
 	)
 
@@ -82,13 +94,13 @@ func AddBorder(vp viewport.Model, title string, footer string, ownFooterStyle bo
 		borderStyle.Render(border.BottomLeft),
 		borderStyle.
 			Render(strings.Repeat(border.Top, max(0, vp.Width-lipgloss.
-				Width(vpFooter)+FocusedBorderStyle.GetHorizontalPadding()))),
+				Width(vpFooter)+BorderStyle.GetHorizontalPadding()))),
 		vpFooter,
 		borderStyle.Render(border.BottomRight),
 	)
 
 	// Render the viewport content inside a box that has NO top and bottom border.
-	vpBody := FocusedBorderStyle.BorderTop(false).BorderBottom(false).Render(vp.View())
+	vpBody := BorderStyle.BorderTop(false).BorderBottom(false).Render(vp.View())
 
 	// Join the title bar and the main content vertically.
 	return lipgloss.JoinVertical(lipgloss.Left, vpTitleBar, vpBody, vpFooterBar)

@@ -19,6 +19,11 @@ type Model struct {
 func New() (m Model) {
 	m.help = help.New()
 	m.help.ShowAll = true
+
+	m.help.Styles.FullKey = styles.HelpKey
+	m.help.Styles.FullDesc = styles.HelpDesc
+	m.help.Styles.FullSeparator = styles.HelpSep
+
 	m.viewport = viewport.New(0, 0)
 	return m
 }
