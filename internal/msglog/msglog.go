@@ -141,6 +141,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		case key.Matches(msg, keymap.Default.ClearLogKey):
 			if m.Vp.Height > 0 {
 				m.log = nil /* reset serial message log */
+				m.msgCnt = 0
 				m.Vp.SetContent("")
 				m.Vp.GotoBottom()
 			}
@@ -241,8 +242,15 @@ func (m *Model) addMsg(msg string, msgType int) {
 func (m *Model) UpdateVp() {
 	if m.Vp.Height > 0 && len(m.log) > 0 {
 		// reset viewport only if we did not scrolled up in msg history
+		atTop := m.Vp.AtTop()
 		atBottom := m.Vp.AtBottom()
-		m.Vp.SetContent(strings.Join(m.log, "\n")) // TODO performance improvements possible
+
+		log.Printf("msglog: at top: %v, at bottom %v\n", atTop, atBottom)
+
+		msgLogStartString := styles.MsgLogStartRenderStyle.Render(
+			fmt.Sprintf("Message log start (limit: %d lines)", m.logLimit)) + "\n"
+		m.Vp.SetContent(msgLogStartString + strings.Join(m.log, "\n")) // TODO performance improvements possible
+
 		if atBottom {
 			m.Vp.GotoBottom()
 		}
