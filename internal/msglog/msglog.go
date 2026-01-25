@@ -212,6 +212,8 @@ func (m *Model) addMsg(msg string, msgType int) {
 		m.serialLog.Println(line.String())
 	}
 
+	atBottom := m.Vp.AtBottom()
+
 	switch msgType {
 	case txMsg:
 		m.log = append(m.log, m.sendStyle.Render(line.String()))
@@ -226,6 +228,11 @@ func (m *Model) addMsg(msg string, msgType int) {
 	// message histrory limit, remove oldest if exceed
 	if len(m.log) > m.logLimit {
 		m.log = m.log[len(m.log)-m.logLimit:]
+		// if scrolled up, we still want to have a fixed screen if the message log limit reached
+		// so we manually scroll up in command history till we reach beginning of message log
+		if atBottom == false {
+			m.Vp.ScrollUp(1)
+		}
 	}
 
 	m.UpdateVp()
@@ -234,7 +241,7 @@ func (m *Model) addMsg(msg string, msgType int) {
 func (m *Model) UpdateVp() {
 	if m.Vp.Height > 0 && len(m.log) > 0 {
 		// reset viewport only if we did not scrolled up in msg history
-		atBottom := m.Vp.AtBottom()                // do not use scroll percentage as this does not work reliable
+		atBottom := m.Vp.AtBottom()
 		m.Vp.SetContent(strings.Join(m.log, "\n")) // TODO performance improvements possible
 		if atBottom {
 			m.Vp.GotoBottom()
