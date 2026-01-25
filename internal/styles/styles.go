@@ -8,13 +8,13 @@ import (
 )
 
 var (
-	AdaptiveGray         = lipgloss.AdaptiveColor{Light: "#464646", Dark: "#818080"}
-	AdaptiveGrayInverted = lipgloss.AdaptiveColor{Light: AdaptiveGray.Dark, Dark: AdaptiveGray.Light}
-	AdaptivePink         = lipgloss.AdaptiveColor{Light: "#9f008f", Dark: "#f943e3"}
-	AdaptiveCyan         = lipgloss.AdaptiveColor{Light: "#006362", Dark: "#96ffec"}
-	AdaptiveGreen        = lipgloss.AdaptiveColor{Light: "#41ab00", Dark: "#6cff11"}
-	AdaptiveRed          = lipgloss.AdaptiveColor{Light: "#8f0000", Dark: "#be0000"}
-	AdaptiveBorderColor  = AdaptiveGray
+	AdaptiveGray        = lipgloss.AdaptiveColor{Light: "#545454", Dark: "#989898"}
+	AdaptiveGrayTwo     = lipgloss.AdaptiveColor{Light: "#858585", Dark: "#5f5f5f"}
+	AdaptivePink        = lipgloss.AdaptiveColor{Light: "#9f008f", Dark: "#f943e3"}
+	AdaptiveCyan        = lipgloss.AdaptiveColor{Light: "#006362", Dark: "#96ffec"}
+	AdaptiveGreen       = lipgloss.AdaptiveColor{Light: "#41ab00", Dark: "#6cff11"}
+	AdaptiveRed         = lipgloss.AdaptiveColor{Light: "#8f0000", Dark: "#be0000"}
+	AdaptiveBorderColor = AdaptiveGray
 
 	CursorStyle = lipgloss.NewStyle().Foreground(AdaptivePink)
 
@@ -36,8 +36,8 @@ var (
 	PercentRenderStyle     = lipgloss.NewStyle().Foreground(AdaptiveCyan)
 	MsgLogStartRenderStyle = lipgloss.NewStyle().Foreground(AdaptiveGray)
 	HelpKey                = lipgloss.NewStyle().Foreground(AdaptiveGray)
-	HelpDesc               = lipgloss.NewStyle().Foreground(AdaptiveGrayInverted)
-	HelpSep                = lipgloss.NewStyle().Foreground(AdaptiveGrayInverted)
+	HelpDesc               = lipgloss.NewStyle().Foreground(AdaptiveGrayTwo)
+	HelpSep                = lipgloss.NewStyle().Foreground(AdaptiveGrayTwo)
 )
 
 // Adds a border with title to viewport and returns viewport string.
