@@ -56,7 +56,7 @@ func GetConfig() Config {
 // Store the current config.
 // Saves the last x elemets of current command history for next session.
 func StoreConfig(cmdHist []string) {
-	const maxStoredCmds = 100
+	const maxStoredCmds = 500
 	if len(cmdHist) > maxStoredCmds {
 		start := len(cmdHist) - maxStoredCmds
 		cmdHist = cmdHist[start:]
