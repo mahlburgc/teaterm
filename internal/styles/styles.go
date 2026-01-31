@@ -30,6 +30,7 @@ var (
 	InfoMsgStyle            = lipgloss.NewStyle().Foreground(AdaptiveGray)
 	FooterStyle             = lipgloss.NewStyle().Foreground(AdaptiveGray)
 	FocusedPromtStyle       = lipgloss.NewStyle().Foreground(AdaptivePink)
+	FocusedSearchPromtStyle = lipgloss.NewStyle().Foreground(AdaptiveCyan)
 	BlurredPromtStyle       = lipgloss.NewStyle().Foreground(AdaptiveGray)
 	HelpOverlayBorderStyle  = lipgloss.NewStyle().Border(lipgloss.RoundedBorder(), true).
 				BorderForeground(AdaptiveCyan).Padding(0, 1, 1)
@@ -38,6 +39,7 @@ var (
 	HelpKey                = lipgloss.NewStyle().Foreground(AdaptiveGray)
 	HelpDesc               = lipgloss.NewStyle().Foreground(AdaptiveGrayTwo)
 	HelpSep                = lipgloss.NewStyle().Foreground(AdaptiveGrayTwo)
+	SearchHighlightStyle   = lipgloss.NewStyle().Background(lipgloss.Color("#FFD700")).Foreground(lipgloss.Color("#000000"))
 )
 
 // Adds a border with title to viewport and returns viewport string.

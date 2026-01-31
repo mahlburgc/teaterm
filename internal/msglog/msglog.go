@@ -25,6 +25,7 @@ type Model struct {
 	errStyle      lipgloss.Style
 	infoStyle     lipgloss.Style
 	log           []string
+	logFiltered   []string
 	showTimestamp bool
 	serialLog     *log.Logger
 	txPrefix      string
@@ -34,6 +35,7 @@ type Model struct {
 	showEscapes   bool
 	logLimit      int
 	msgCnt        int // rx and tx messages during one session
+	filterString  string
 }
 
 // This message is sent when the editor is closed.
@@ -66,6 +68,7 @@ func New(showTimestamp bool, showEscapes bool, sendStyle lipgloss.Style,
 	m.Vp.KeyMap.PageDown.SetEnabled(false)
 
 	m.log = []string{}
+	m.logFiltered = []string{}
 
 	m.txPrefix = ""
 	m.rxPrefix = ""
@@ -75,6 +78,7 @@ func New(showTimestamp bool, showEscapes bool, sendStyle lipgloss.Style,
 	m.showEscapes = showEscapes
 	m.logLimit = logLimit
 	m.msgCnt = 0
+	m.filterString = ""
 
 	m.sendStyle = sendStyle
 	m.errStyle = errStyle
@@ -96,6 +100,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		// events. Other events are handled externally.
 		m.Vp, cmd = m.Vp.Update(msg)
 		return m, cmd
+
+	case events.MsgLogFilterStringMsg:
+		m.filterString = string(msg)
+		m.filterLog(m.filterString)
 
 	case events.SendMsg:
 		m.addMsg(msg.Data, txMsg)
@@ -145,6 +153,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		case key.Matches(msg, keymap.Default.ClearLogKey):
 			if m.Vp.Height > 0 {
 				m.log = nil /* reset serial message log */
+				m.logFiltered = nil
 				m.msgCnt = 0
 				m.Vp.SetContent("")
 				m.Vp.GotoBottom()
@@ -245,11 +254,11 @@ func (m *Model) addMsg(msg string, msgType int) {
 		m.Vp.GotoBottom()
 	}
 
-	m.UpdateVp()
+	m.filterLog(m.filterString)
 }
 
 func (m *Model) UpdateVp() {
-	if m.Vp.Height > 0 && len(m.log) > 0 {
+	if m.Vp.Height > 0 {
 		// reset viewport only if we did not scrolled up in msg history
 		atBottom := m.Vp.AtBottom()
 
@@ -258,7 +267,7 @@ func (m *Model) UpdateVp() {
 		// TODO performance improvements possible: instead of resetting the whole vp content,
 		// content could be managed externally and only visible lines are added to content.
 		// -> this would also need an external scroll handling.
-		m.Vp.SetContent(msgLogStartString + strings.Join(m.log, "\n"))
+		m.Vp.SetContent(msgLogStartString + strings.Join(m.logFiltered, "\n"))
 
 		if atBottom {
 			m.Vp.GotoBottom()
@@ -321,4 +330,29 @@ func openEditorCmd(content []string) tea.Cmd {
 
 		return EditorFinishedMsg{err: err}
 	})
+}
+
+// filter the message log for
+func (m *Model) filterLog(msg string) {
+	if msg == "" {
+		m.logFiltered = m.log
+	} else {
+		searchWords := strings.Fields(strings.ToLower(msg))
+		filtered := make([]string, 0)
+		for _, line := range m.log {
+			lowerLine := strings.ToLower(line)
+			matchesAll := true
+			for _, word := range searchWords {
+				if !strings.Contains(lowerLine, word) {
+					matchesAll = false
+					break
+				}
+			}
+			if matchesAll {
+				filtered = append(filtered, line)
+			}
+		}
+		m.logFiltered = filtered
+	}
+	m.UpdateVp()
 }

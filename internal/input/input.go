@@ -18,10 +18,16 @@ import (
 )
 
 type Model struct {
-	ta              textarea.Model
-	inputSuggestion string
-	width           int
+	ta                 textarea.Model
+	inputSuggestion    string
+	width              int
+	isMsgLogFilterMode bool
 }
+
+const (
+	searchPromt = "Filter: "
+	inputPromt  = "> "
+)
 
 func New() (m Model) {
 	m.ta = textarea.New()
@@ -29,7 +35,7 @@ func New() (m Model) {
 	m.ta.SetHeight(1)
 	m.ta.Placeholder = "Send a message..."
 	m.ta.Focus()
-	m.ta.Prompt = "> "
+	m.ta.Prompt = inputPromt
 	m.ta.CharLimit = 256
 	m.ta.ShowLineNumbers = false
 	m.ta.KeyMap.InsertNewline.SetEnabled(false)
@@ -40,6 +46,7 @@ func New() (m Model) {
 	m.ta.BlurredStyle.Prompt = styles.BlurredPromtStyle
 	m.ta.FocusedStyle.Base = lipgloss.NewStyle() // No border
 	m.ta.BlurredStyle.Base = lipgloss.NewStyle() // No border
+	m.isMsgLogFilterMode = false
 
 	return m
 }
@@ -78,16 +85,25 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, cmd
 
 		default:
-			// Ta input may changed, broadcast current ta input.
-			var partialTxMsgCmd tea.Cmd
-			inputVal := m.ta.Value()
-			partialTxMsgCmd = func() tea.Msg {
-				return events.PartialTxMsg(inputVal)
+			if m.isMsgLogFilterMode { // send MsgLogFilterString to filter message log
+				var filterStringCmd tea.Cmd
+				inputVal := m.ta.Value()
+				filterStringCmd = func() tea.Msg {
+					return events.MsgLogFilterStringMsg(inputVal)
+				}
+				return m, tea.Batch(cmd, filterStringCmd)
+			} else { // send partialTxMsgCmd to filter cmd hist
+				// Ta input may changed, broadcast current ta input.
+				var partialTxMsgCmd tea.Cmd
+				inputVal := m.ta.Value()
+				partialTxMsgCmd = func() tea.Msg {
+					return events.PartialTxMsg(inputVal)
+				}
+				if m.ta.Length() == 0 {
+					m.inputSuggestion = "" // Clear suggestion if input is empty.
+				}
+				return m, tea.Batch(cmd, partialTxMsgCmd)
 			}
-			if m.ta.Length() == 0 {
-				m.inputSuggestion = "" // Clear suggestion if input is empty.
-			}
-			return m, tea.Batch(cmd, partialTxMsgCmd)
 		}
 	}
 
@@ -111,13 +127,24 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		case key.Matches(msg, keymap.Default.SendKey):
 			if m.ta.Value() == "" {
 				return m, nil
-			}
-			return m, func() tea.Msg {
-				return events.SendMsg{Data: m.ta.Value(), FromCmdHist: false}
+			} else if !m.isMsgLogFilterMode {
+				return m, func() tea.Msg {
+					return events.SendMsg{Data: m.ta.Value(), FromCmdHist: false}
+				}
 			}
 
 		case key.Matches(msg, keymap.Default.ResetKey):
 			return m, m.Reset()
+
+		case key.Matches(msg, keymap.Default.CloseKey):
+			return m, m.Reset()
+
+		case key.Matches(msg, keymap.Default.FilterMsgLogKey):
+			if !m.isMsgLogFilterMode {
+				return m, m.SetFiltering()
+			} else {
+				return m, m.Reset()
+			}
 
 		case key.Matches(msg, keymap.Default.AutoCompleteKey):
 			if m.inputSuggestion != "" {
@@ -132,11 +159,13 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, m.Reset()
 
 	case events.HistCmdSelected:
-		if string(msg) != "" {
-			m.SetValue(string(msg))
-			return m, nil
-		} else {
-			return m, m.Reset()
+		if !m.isMsgLogFilterMode {
+			if string(msg) != "" {
+				m.SetValue(string(msg))
+				return m, nil
+			} else {
+				return m, m.Reset()
+			}
 		}
 
 	// new input suggestion received from cmd history
@@ -254,5 +283,24 @@ func (m *Model) SetConnecting() {
 }
 
 func (m *Model) Reset() tea.Cmd {
-	return m.SetConnected()
+	m.isMsgLogFilterMode = false
+	m.ta.Prompt = inputPromt
+	m.ta.FocusedStyle.Prompt = styles.FocusedPromtStyle
+	filterStringCmd := func() tea.Msg {
+		return events.MsgLogFilterStringMsg("")
+	}
+	return tea.Batch(m.SetConnected(), filterStringCmd)
+}
+
+func (m *Model) SetFiltering() tea.Cmd {
+	m.isMsgLogFilterMode = true
+	m.ta.Reset()
+	m.ta.Prompt = searchPromt
+	m.ta.FocusedStyle.Prompt = styles.FocusedSearchPromtStyle
+	m.ta.Placeholder = "Enter filter string..."
+	m.inputSuggestion = ""
+	filterStringCmd := func() tea.Msg {
+		return events.MsgLogFilterStringMsg("")
+	}
+	return tea.Batch(m.ta.Focus(), filterStringCmd)
 }
