@@ -149,7 +149,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.Vp.GotoBottom()
 
 		case key.Matches(msg, keymap.Default.OpenEditorKey):
-			return m, openEditorCmd(m.log)
+			return m, openEditorCmd(m.logFiltered)
 
 		case key.Matches(msg, keymap.Default.ClearLogKey):
 			if m.Vp.Height > 0 {
