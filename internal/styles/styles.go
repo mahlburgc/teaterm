@@ -30,6 +30,7 @@ var (
 	InfoMsgStyle            = lipgloss.NewStyle().Foreground(AdaptiveGray)
 	FooterStyle             = lipgloss.NewStyle().Foreground(AdaptiveGray)
 	FocusedPromtStyle       = lipgloss.NewStyle().Foreground(AdaptivePink)
+	FocusedSearchPromtStyle = lipgloss.NewStyle().Foreground(AdaptiveCyan)
 	BlurredPromtStyle       = lipgloss.NewStyle().Foreground(AdaptiveGray)
 	HelpOverlayBorderStyle  = lipgloss.NewStyle().Border(lipgloss.RoundedBorder(), true).
 				BorderForeground(AdaptiveCyan).Padding(0, 1, 1)

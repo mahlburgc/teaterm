@@ -17,6 +17,7 @@ import (
 	"github.com/mahlburgc/teaterm/events"
 	"github.com/mahlburgc/teaterm/internal/keymap"
 	"github.com/mahlburgc/teaterm/internal/styles"
+	"github.com/sahilm/fuzzy"
 )
 
 type Model struct {
@@ -25,6 +26,7 @@ type Model struct {
 	errStyle      lipgloss.Style
 	infoStyle     lipgloss.Style
 	log           []string
+	logFiltered   []string
 	showTimestamp bool
 	serialLog     *log.Logger
 	txPrefix      string
@@ -34,6 +36,7 @@ type Model struct {
 	showEscapes   bool
 	logLimit      int
 	msgCnt        int // rx and tx messages during one session
+	filterString  string
 }
 
 // This message is sent when the editor is closed.
@@ -75,6 +78,7 @@ func New(showTimestamp bool, showEscapes bool, sendStyle lipgloss.Style,
 	m.showEscapes = showEscapes
 	m.logLimit = logLimit
 	m.msgCnt = 0
+	m.filterString = ""
 
 	m.sendStyle = sendStyle
 	m.errStyle = errStyle
@@ -96,6 +100,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		// events. Other events are handled externally.
 		m.Vp, cmd = m.Vp.Update(msg)
 		return m, cmd
+
+	case events.MsgLogFilterStringMsg:
+		m.filterString = string(msg)
+		m.runFuzzySearch(m.filterString)
 
 	case events.SendMsg:
 		m.addMsg(msg.Data, txMsg)
@@ -321,4 +329,18 @@ func openEditorCmd(content []string) tea.Cmd {
 
 		return EditorFinishedMsg{err: err}
 	})
+}
+
+// filter the message log for
+func (m *Model) runFuzzySearch(msg string) {
+	if msg == "" {
+		m.logFiltered = m.log
+	} else {
+		matches := fuzzy.FindNoSort(msg, m.log)
+		m.logFiltered = make([]string, len(matches))
+		for i, match := range matches {
+			m.logFiltered[len(matches)-1-i] = match.Str
+		}
+	}
+	log.Printf("Filetered log: %v", m.logFiltered)
 }

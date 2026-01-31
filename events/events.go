@@ -5,8 +5,11 @@ package events
 // Indicates a message was sent to the serial port.
 type SerialTxMsg string
 
-// Indicates a message is typed into the input field.
+// Indicates a message is typed into the input field to filter the command history.
 type PartialTxMsg string
+
+// Indicates a message is typed into the input field to filter the message log.
+type MsgLogFilterStringMsg string
 
 // Indicates a input is suggested.
 type InputSuggestion string
