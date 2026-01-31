@@ -39,7 +39,7 @@ var (
 	HelpKey                = lipgloss.NewStyle().Foreground(AdaptiveGray)
 	HelpDesc               = lipgloss.NewStyle().Foreground(AdaptiveGrayTwo)
 	HelpSep                = lipgloss.NewStyle().Foreground(AdaptiveGrayTwo)
-	SearchHighlightStyle   = lipgloss.NewStyle().Background(lipgloss.Color("#FFD700")).Foreground(lipgloss.Color("#000000"))
+	SearchHighlightStyle   = lipgloss.NewStyle().Foreground(AdaptiveCyan).Bold(true)
 )
 
 // Adds a border with title to viewport and returns viewport string.

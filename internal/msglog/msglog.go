@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 
@@ -341,6 +342,7 @@ func (m *Model) filterLog(msg string) {
 		filtered := make([]string, 0)
 		for _, line := range m.log {
 			lowerLine := strings.ToLower(line)
+
 			matchesAll := true
 			for _, word := range searchWords {
 				if !strings.Contains(lowerLine, word) {
@@ -349,7 +351,15 @@ func (m *Model) filterLog(msg string) {
 				}
 			}
 			if matchesAll {
-				filtered = append(filtered, line)
+				highlightedLine := lipgloss.NewStyle().Render(line)
+				log.Printf("msglog: highlightedLine %v\n", highlightedLine)
+				for _, word := range searchWords {
+					re := regexp.MustCompile("(?i)" + regexp.QuoteMeta(word))
+					highlightedLine = re.ReplaceAllStringFunc(highlightedLine, func(s string) string {
+						return styles.SearchHighlightStyle.Render(s)
+					})
+				}
+				filtered = append(filtered, highlightedLine)
 			}
 		}
 		m.logFiltered = filtered
