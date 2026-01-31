@@ -86,12 +86,16 @@ func New(showTimestamp bool, showEscapes bool, sendStyle lipgloss.Style,
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	var cmd tea.Cmd
-	m.Vp, cmd = m.Vp.Update(msg)
-	if cmd != nil {
-		return m, cmd
-	}
 
 	switch msg := msg.(type) {
+
+	case tea.MouseMsg:
+		// Bugfix unintentional scroll in message log:
+		// It seems like m.Vp.Update(msg) logic produces an unintentional scroll event if
+		// cursor.blinkCanceled is processed. So we only use internal update logic to perform scroll
+		// events. Other events are handled externally.
+		m.Vp, cmd = m.Vp.Update(msg)
+		return m, cmd
 
 	case events.SendMsg:
 		m.addMsg(msg.Data, txMsg)
@@ -222,7 +226,7 @@ func (m *Model) addMsg(msg string, msgType int) {
 		m.log = append(m.log, m.errStyle.Render(line.String()))
 	case infoMsg:
 		m.log = append(m.log, m.infoStyle.Render(line.String()))
-	default:
+	case rxMsg:
 		m.log = append(m.log, line.String())
 	}
 
@@ -236,20 +240,25 @@ func (m *Model) addMsg(msg string, msgType int) {
 		}
 	}
 
+	// always reset vp to bottom if we send new messages or receive info or error messages
+	if msgType != rxMsg {
+		m.Vp.GotoBottom()
+	}
+
 	m.UpdateVp()
 }
 
 func (m *Model) UpdateVp() {
 	if m.Vp.Height > 0 && len(m.log) > 0 {
 		// reset viewport only if we did not scrolled up in msg history
-		atTop := m.Vp.AtTop()
 		atBottom := m.Vp.AtBottom()
-
-		log.Printf("msglog: at top: %v, at bottom %v\n", atTop, atBottom)
 
 		msgLogStartString := styles.MsgLogStartRenderStyle.Render(
 			fmt.Sprintf("Message log start (limit: %d lines)", m.logLimit)) + "\n"
-		m.Vp.SetContent(msgLogStartString + strings.Join(m.log, "\n")) // TODO performance improvements possible
+		// TODO performance improvements possible: instead of resetting the whole vp content,
+		// content could be managed externally and only visible lines are added to content.
+		// -> this would also need an external scroll handling.
+		m.Vp.SetContent(msgLogStartString + strings.Join(m.log, "\n"))
 
 		if atBottom {
 			m.Vp.GotoBottom()
