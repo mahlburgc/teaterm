@@ -69,6 +69,7 @@ func New(showTimestamp bool, showEscapes bool, sendStyle lipgloss.Style,
 	m.Vp.KeyMap.PageDown.SetEnabled(false)
 
 	m.log = []string{}
+	m.logFiltered = []string{}
 
 	m.txPrefix = ""
 	m.rxPrefix = ""
@@ -153,6 +154,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		case key.Matches(msg, keymap.Default.ClearLogKey):
 			if m.Vp.Height > 0 {
 				m.log = nil /* reset serial message log */
+				m.logFiltered = nil
 				m.msgCnt = 0
 				m.Vp.SetContent("")
 				m.Vp.GotoBottom()
@@ -253,11 +255,11 @@ func (m *Model) addMsg(msg string, msgType int) {
 		m.Vp.GotoBottom()
 	}
 
-	m.UpdateVp()
+	m.runFuzzySearch(m.filterString)
 }
 
 func (m *Model) UpdateVp() {
-	if m.Vp.Height > 0 && len(m.log) > 0 {
+	if m.Vp.Height > 0 {
 		// reset viewport only if we did not scrolled up in msg history
 		atBottom := m.Vp.AtBottom()
 
@@ -266,7 +268,7 @@ func (m *Model) UpdateVp() {
 		// TODO performance improvements possible: instead of resetting the whole vp content,
 		// content could be managed externally and only visible lines are added to content.
 		// -> this would also need an external scroll handling.
-		m.Vp.SetContent(msgLogStartString + strings.Join(m.log, "\n"))
+		m.Vp.SetContent(msgLogStartString + strings.Join(m.logFiltered, "\n"))
 
 		if atBottom {
 			m.Vp.GotoBottom()
@@ -339,8 +341,9 @@ func (m *Model) runFuzzySearch(msg string) {
 		matches := fuzzy.FindNoSort(msg, m.log)
 		m.logFiltered = make([]string, len(matches))
 		for i, match := range matches {
-			m.logFiltered[len(matches)-1-i] = match.Str
+			m.logFiltered[i] = match.Str
 		}
 	}
-	log.Printf("Filetered log: %v", m.logFiltered)
+	log.Printf("msglog: filtered: %v\n", m.logFiltered)
+	m.UpdateVp()
 }

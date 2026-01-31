@@ -137,7 +137,11 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, m.Reset()
 
 		case key.Matches(msg, keymap.Default.FilterMsgLogKey):
-			return m, m.SetFiltering()
+			if !m.isMsgLogFilterMode {
+				return m, m.SetFiltering()
+			} else {
+				return m, m.Reset()
+			}
 
 		case key.Matches(msg, keymap.Default.AutoCompleteKey):
 			if m.inputSuggestion != "" {
@@ -277,7 +281,10 @@ func (m *Model) Reset() tea.Cmd {
 	m.isMsgLogFilterMode = false
 	m.ta.Prompt = inputPromt
 	m.ta.FocusedStyle.Prompt = styles.FocusedPromtStyle
-	return m.SetConnected()
+	filterStringCmd := func() tea.Msg {
+		return events.MsgLogFilterStringMsg("")
+	}
+	return tea.Batch(m.SetConnected(), filterStringCmd)
 }
 
 func (m *Model) SetFiltering() tea.Cmd {
@@ -287,5 +294,8 @@ func (m *Model) SetFiltering() tea.Cmd {
 	m.ta.FocusedStyle.Prompt = styles.FocusedSearchPromtStyle
 	m.ta.Placeholder = "Enter filter string..."
 	m.inputSuggestion = ""
-	return m.ta.Focus()
+	filterStringCmd := func() tea.Msg {
+		return events.MsgLogFilterStringMsg("")
+	}
+	return tea.Batch(m.ta.Focus(), filterStringCmd)
 }
