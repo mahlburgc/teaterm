@@ -25,7 +25,7 @@ type Model struct {
 }
 
 const (
-	searchPromt = "Search: "
+	searchPromt = "Filter: "
 	inputPromt  = "> "
 )
 
@@ -136,6 +136,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		case key.Matches(msg, keymap.Default.ResetKey):
 			return m, m.Reset()
 
+		case key.Matches(msg, keymap.Default.CloseKey):
+			return m, m.Reset()
+
 		case key.Matches(msg, keymap.Default.FilterMsgLogKey):
 			if !m.isMsgLogFilterMode {
 				return m, m.SetFiltering()
@@ -156,11 +159,13 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, m.Reset()
 
 	case events.HistCmdSelected:
-		if string(msg) != "" {
-			m.SetValue(string(msg))
-			return m, nil
-		} else {
-			return m, m.Reset()
+		if !m.isMsgLogFilterMode {
+			if string(msg) != "" {
+				m.SetValue(string(msg))
+				return m, nil
+			} else {
+				return m, m.Reset()
+			}
 		}
 
 	// new input suggestion received from cmd history

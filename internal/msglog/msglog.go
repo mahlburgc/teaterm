@@ -17,7 +17,6 @@ import (
 	"github.com/mahlburgc/teaterm/events"
 	"github.com/mahlburgc/teaterm/internal/keymap"
 	"github.com/mahlburgc/teaterm/internal/styles"
-	"github.com/sahilm/fuzzy"
 )
 
 type Model struct {
@@ -104,7 +103,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 	case events.MsgLogFilterStringMsg:
 		m.filterString = string(msg)
-		m.runFuzzySearch(m.filterString)
+		m.filterLog(m.filterString)
 
 	case events.SendMsg:
 		m.addMsg(msg.Data, txMsg)
@@ -255,7 +254,7 @@ func (m *Model) addMsg(msg string, msgType int) {
 		m.Vp.GotoBottom()
 	}
 
-	m.runFuzzySearch(m.filterString)
+	m.filterLog(m.filterString)
 }
 
 func (m *Model) UpdateVp() {
@@ -334,16 +333,26 @@ func openEditorCmd(content []string) tea.Cmd {
 }
 
 // filter the message log for
-func (m *Model) runFuzzySearch(msg string) {
+func (m *Model) filterLog(msg string) {
 	if msg == "" {
 		m.logFiltered = m.log
 	} else {
-		matches := fuzzy.FindNoSort(msg, m.log)
-		m.logFiltered = make([]string, len(matches))
-		for i, match := range matches {
-			m.logFiltered[i] = match.Str
+		searchWords := strings.Fields(strings.ToLower(msg))
+		filtered := make([]string, 0)
+		for _, line := range m.log {
+			lowerLine := strings.ToLower(line)
+			matchesAll := true
+			for _, word := range searchWords {
+				if !strings.Contains(lowerLine, word) {
+					matchesAll = false
+					break
+				}
+			}
+			if matchesAll {
+				filtered = append(filtered, line)
+			}
 		}
+		m.logFiltered = filtered
 	}
-	log.Printf("msglog: filtered: %v\n", m.logFiltered)
 	m.UpdateVp()
 }
