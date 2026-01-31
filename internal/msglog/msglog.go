@@ -351,10 +351,10 @@ func (m *Model) filterLog(msg string) {
 				}
 			}
 			if matchesAll {
-				highlightedLine := lipgloss.NewStyle().Render(line)
-				log.Printf("msglog: highlightedLine %v\n", highlightedLine)
+				highlightedLine := stripansi.Strip(line)
 				for _, word := range searchWords {
 					re := regexp.MustCompile("(?i)" + regexp.QuoteMeta(word))
+
 					highlightedLine = re.ReplaceAllStringFunc(highlightedLine, func(s string) string {
 						return styles.SearchHighlightStyle.Render(s)
 					})

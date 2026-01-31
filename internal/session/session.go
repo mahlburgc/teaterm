@@ -240,7 +240,6 @@ func (m Model) ReadFromPort(ctx context.Context) tea.Cmd {
 	scn := m.scanner
 
 	return func() tea.Msg {
-		log.Println("Starting read from port")
 		for scn.Scan() {
 			line := scn.Text()
 			return events.SerialRxMsgReceived(line)
