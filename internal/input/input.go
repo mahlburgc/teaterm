@@ -112,13 +112,13 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case events.ConnectionStatusMsg:
 		switch msg.Status {
 		case events.Disconnected:
-			m.SetDisconnectet()
+			cmd = m.SetDisconnectet()
 
 		case events.Connected:
-			cmd = m.SetConnected()
+			cmd = m.Reset()
 
 		case events.Connecting:
-			m.SetConnecting()
+			cmd = m.SetConnecting()
 		}
 		return m, cmd
 
@@ -134,16 +134,22 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			}
 
 		case key.Matches(msg, keymap.Default.ResetKey):
-			return m, m.Reset()
+			if m.ta.Focused() {
+				return m, m.Reset()
+			}
 
 		case key.Matches(msg, keymap.Default.CloseKey):
-			return m, m.Reset()
+			if m.ta.Focused() {
+				return m, m.Reset()
+			}
 
 		case key.Matches(msg, keymap.Default.FilterMsgLogKey):
-			if !m.isMsgLogFilterMode {
-				return m, m.SetFiltering()
-			} else {
-				return m, m.Reset()
+			if m.ta.Focused() {
+				if !m.isMsgLogFilterMode {
+					return m, m.SetFiltering()
+				} else {
+					return m, m.Reset()
+				}
 			}
 
 		case key.Matches(msg, keymap.Default.AutoCompleteKey):
@@ -261,30 +267,44 @@ func (m *Model) SetValue(value string) {
 	m.ta.SetValue(value)
 }
 
-func (m *Model) SetDisconnectet() {
+func (m *Model) SetDisconnectet() tea.Cmd {
 	m.ta.Reset()
+	m.ta.Prompt = inputPromt
 	m.ta.Placeholder = "Disconnected"
 	m.ta.Blur()
 	m.inputSuggestion = ""
+	filterStringCmd := func() tea.Msg {
+		return events.MsgLogFilterStringMsg("")
+	}
+	return filterStringCmd
 }
 
 func (m *Model) SetConnected() tea.Cmd {
 	m.ta.Reset()
+	m.ta.Prompt = inputPromt
+	m.ta.Cursor.Style = styles.CursorStyle
+	m.ta.FocusedStyle.Prompt = styles.FocusedPromtStyle
 	m.ta.Placeholder = "Send a message..."
 	m.inputSuggestion = ""
 	return m.ta.Focus()
 }
 
-func (m *Model) SetConnecting() {
+func (m *Model) SetConnecting() tea.Cmd {
 	m.ta.Reset()
+	m.ta.Prompt = inputPromt
 	m.ta.Placeholder = "Connecting..."
 	m.ta.Blur()
 	m.inputSuggestion = ""
+	filterStringCmd := func() tea.Msg {
+		return events.MsgLogFilterStringMsg("")
+	}
+	return filterStringCmd
 }
 
 func (m *Model) Reset() tea.Cmd {
 	m.isMsgLogFilterMode = false
 	m.ta.Prompt = inputPromt
+	m.ta.Cursor.Style = styles.CursorStyle
 	m.ta.FocusedStyle.Prompt = styles.FocusedPromtStyle
 	filterStringCmd := func() tea.Msg {
 		return events.MsgLogFilterStringMsg("")
@@ -296,6 +316,7 @@ func (m *Model) SetFiltering() tea.Cmd {
 	m.isMsgLogFilterMode = true
 	m.ta.Reset()
 	m.ta.Prompt = searchPromt
+	m.ta.Cursor.Style = styles.CursorFilterStyle
 	m.ta.FocusedStyle.Prompt = styles.FocusedSearchPromtStyle
 	m.ta.Placeholder = "Enter filter string..."
 	m.inputSuggestion = ""

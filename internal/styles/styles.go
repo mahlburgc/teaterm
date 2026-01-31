@@ -16,7 +16,8 @@ var (
 	AdaptiveRed         = lipgloss.AdaptiveColor{Light: "#8f0000", Dark: "#be0000"}
 	AdaptiveBorderColor = AdaptiveGray
 
-	CursorStyle = lipgloss.NewStyle().Foreground(AdaptivePink)
+	CursorStyle       = lipgloss.NewStyle().Foreground(AdaptivePink)
+	CursorFilterStyle = lipgloss.NewStyle().Foreground(AdaptiveCyan)
 
 	ConnectSymbolStyle = lipgloss.NewStyle().Foreground(AdaptiveGreen)
 
