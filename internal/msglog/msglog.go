@@ -37,6 +37,7 @@ type Model struct {
 	logLimit      int
 	msgCnt        int // rx and tx messages during one session
 	filterString  string
+	scrollIndex   int
 }
 
 // This message is sent when the editor is closed.
@@ -90,20 +91,12 @@ func New(showTimestamp bool, showEscapes bool, sendStyle lipgloss.Style,
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
-	var cmd tea.Cmd
+	// viewport will be managed completely manually, so viewports update function will not be called.
 
 	switch msg := msg.(type) {
-
-	case tea.MouseMsg:
-		// Bugfix unintentional scroll in message log:
-		// It seems like m.Vp.Update(msg) logic produces an unintentional scroll event if
-		// cursor.blinkCanceled is processed. So we only use internal update logic to perform scroll
-		// events. Other events are handled externally.
-		m.Vp, cmd = m.Vp.Update(msg)
-		return m, cmd
-
 	case events.MsgLogFilterStringMsg:
 		m.filterString = string(msg)
+		m.scrollIndex = 0 // reset scrolling
 		m.filterLog(m.filterString)
 
 	case events.SendMsg:
@@ -122,6 +115,15 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.addMsg(string(msg), infoMsg)
 		return m, nil
 
+	case tea.MouseMsg:
+		switch msg.Button {
+		case tea.MouseButtonWheelUp:
+			m.scrollUp(1)
+
+		case tea.MouseButtonWheelDown:
+			m.scrollDown(1)
+		}
+
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, keymap.Default.LogLeftKey):
@@ -131,22 +133,22 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.Vp.ScrollRight(3)
 
 		case key.Matches(msg, keymap.Default.LogUpKey):
-			m.Vp.ScrollUp(1)
+			m.scrollUp(1)
 
 		case key.Matches(msg, keymap.Default.LogDownKey):
-			m.Vp.ScrollDown(1)
+			m.scrollDown(1)
 
 		case key.Matches(msg, keymap.Default.LogUpFastKey):
-			m.Vp.ScrollUp(10)
+			m.scrollUp(10)
 
 		case key.Matches(msg, keymap.Default.LogDownFastKey):
-			m.Vp.ScrollDown(10)
+			m.scrollDown(10)
 
 		case key.Matches(msg, keymap.Default.LogTopKey):
-			m.Vp.GotoTop()
+			m.scrollToTop()
 
 		case key.Matches(msg, keymap.Default.LogBottomKey):
-			m.Vp.GotoBottom()
+			m.scrollToBottom()
 
 		case key.Matches(msg, keymap.Default.OpenEditorKey):
 			return m, openEditorCmd(m.logFiltered)
@@ -157,7 +159,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				m.logFiltered = nil
 				m.msgCnt = 0
 				m.Vp.SetContent("")
-				m.Vp.GotoBottom()
+				m.scrollToBottom()
 			}
 		}
 
@@ -175,7 +177,7 @@ func (m Model) View() string {
 	borderStyle := lipgloss.NewStyle().Foreground(styles.AdaptiveBorderColor)
 	var percentRenderStyle lipgloss.Style
 	scrollPercentage := m.GetScrollPercent()
-	if m.Vp.AtBottom() {
+	if m.atBottom() {
 		percentRenderStyle = borderStyle
 	} else {
 		percentRenderStyle = styles.PercentRenderStyle
@@ -194,6 +196,74 @@ func (m *Model) SetSize(width, height int) {
 	m.Vp.Height = height - borderHeight
 
 	m.UpdateVp()
+}
+
+func (m *Model) scrollUp(n int) {
+	if m.atTop() {
+		return
+	}
+
+	if m.maxScrollIndex()-m.scrollIndex > n {
+		m.scrollIndex = m.scrollIndex + n
+	} else {
+		m.scrollIndex = m.maxScrollIndex()
+	}
+
+	m.UpdateVp()
+}
+
+func (m *Model) maxScrollIndex() int {
+	return len(m.logFiltered) - m.Vp.Height
+}
+
+func (m *Model) scrollToTop() {
+	if m.atTop() {
+		return
+	}
+
+	m.scrollIndex = m.maxScrollIndex()
+
+	m.UpdateVp()
+}
+
+func (m *Model) scrollToBottom() {
+	if m.atBottom() {
+		return
+	}
+
+	m.scrollIndex = 0
+
+	m.UpdateVp()
+}
+
+func (m *Model) scrollDown(n int) {
+	if m.atBottom() {
+		return
+	}
+
+	if m.scrollIndex-n > 0 {
+		m.scrollIndex = m.scrollIndex - n
+	} else {
+		m.scrollIndex = 0
+	}
+
+	m.UpdateVp()
+}
+
+func (m *Model) atTop() bool {
+	if len(m.logFiltered) > m.Vp.Height {
+		return m.scrollIndex == m.maxScrollIndex()
+	} else {
+		return true
+	}
+}
+
+func (m *Model) atBottom() bool {
+	if len(m.logFiltered) > m.Vp.Height {
+		return m.scrollIndex == 0
+	} else {
+		return true
+	}
 }
 
 // Log a message to the viewport
@@ -227,7 +297,7 @@ func (m *Model) addMsg(msg string, msgType int) {
 		m.serialLog.Println(line.String())
 	}
 
-	atBottom := m.Vp.AtBottom()
+	atBottom := m.atBottom()
 
 	switch msgType {
 	case txMsg:
@@ -240,48 +310,66 @@ func (m *Model) addMsg(msg string, msgType int) {
 		m.log = append(m.log, line.String())
 	}
 
+	// msgLogStartString = styles.MsgLogStartRenderStyle.Render(
+	// fmt.Sprintf("Message log start (limit: %d lines)", m.logLimit)) + "\n"
+
 	// message histrory limit, remove oldest if exceed
 	if len(m.log) > m.logLimit {
 		m.log = m.log[len(m.log)-m.logLimit:]
 		// if scrolled up, we still want to have a fixed screen if the message log limit reached
 		// so we manually scroll up in command history till we reach beginning of message log
 		if atBottom == false {
-			m.Vp.ScrollUp(1)
+			m.scrollUp(1)
 		}
 	}
 
 	// always reset vp to bottom if we send new messages or receive info or error messages
 	if msgType != rxMsg {
-		m.Vp.GotoBottom()
+		m.scrollToBottom()
 	}
 
 	m.filterLog(m.filterString)
 }
 
 func (m *Model) UpdateVp() {
-	if m.Vp.Height > 0 {
-		// reset viewport only if we did not scrolled up in msg history
-		atBottom := m.Vp.AtBottom()
-
-		msgLogStartString := styles.MsgLogStartRenderStyle.Render(
-			fmt.Sprintf("Message log start (limit: %d lines)", m.logLimit)) + "\n"
-		// TODO performance improvements possible: instead of resetting the whole vp content,
-		// content could be managed externally and only visible lines are added to content.
-		// -> this would also need an external scroll handling.
-		m.Vp.SetContent(msgLogStartString + strings.Join(m.logFiltered, "\n"))
-
-		if atBottom {
-			m.Vp.GotoBottom()
-		}
+	if m.Vp.Height <= 0 {
+		return
 	}
+
+	startIndex := m.getFirstViewableElementIndex()
+	stopIndex := m.getLastViewableElementIndex()
+	content := strings.Join(m.logFiltered[startIndex:stopIndex], "\n")
+	m.Vp.SetContent(content)
 }
 
 func (m Model) GetLen() int {
 	return len(m.log)
 }
 
+func (m *Model) contentFitsInVp() bool {
+	return len(m.logFiltered) <= m.Vp.Height
+}
+
+func (m *Model) getFirstViewableElementIndex() int {
+	if m.contentFitsInVp() {
+		return 0
+	}
+	return m.maxScrollIndex() - m.scrollIndex
+}
+
+func (m *Model) getLastViewableElementIndex() int {
+	if m.contentFitsInVp() {
+		return len(m.logFiltered)
+	}
+	return len(m.logFiltered) - m.scrollIndex
+}
+
 func (m Model) GetScrollPercent() float64 {
-	return m.Vp.ScrollPercent() * 100
+	if m.atBottom() {
+		return 100
+	}
+
+	return 100 - (float64(m.scrollIndex) * 100 / float64(m.maxScrollIndex()))
 }
 
 // openEditorCmd creates a tea.Cmd that runs the editor.
