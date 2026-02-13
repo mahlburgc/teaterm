@@ -274,6 +274,10 @@ func (m *Model) addMsg(msg string, msgType int) {
 		line.WriteString(fmt.Sprintf("[%s] ", t))
 	}
 
+	if len(m.log) == 0 {
+		m.log = append(m.log, m.startMsg())
+	}
+
 	switch msgType {
 	case txMsg:
 		line.WriteString(m.txPrefix)
@@ -310,12 +314,10 @@ func (m *Model) addMsg(msg string, msgType int) {
 		m.log = append(m.log, line.String())
 	}
 
-	// msgLogStartString = styles.MsgLogStartRenderStyle.Render(
-	// fmt.Sprintf("Message log start (limit: %d lines)", m.logLimit)) + "\n"
-
 	// message histrory limit, remove oldest if exceed
 	if len(m.log) > m.logLimit {
 		m.log = m.log[len(m.log)-m.logLimit:]
+		m.log[0] = m.startMsg()
 		// if scrolled up, we still want to have a fixed screen if the message log limit reached
 		// so we manually scroll up in command history till we reach beginning of message log
 		if atBottom == false {
@@ -329,6 +331,11 @@ func (m *Model) addMsg(msg string, msgType int) {
 	}
 
 	m.filterLog(m.filterString)
+}
+
+func (m *Model) startMsg() string {
+	return styles.MsgLogStartRenderStyle.Render(
+		fmt.Sprintf("Message log start (limit: %d lines)", m.logLimit))
 }
 
 func (m *Model) UpdateVp() {
