@@ -33,8 +33,8 @@ func NewMockPort() io.ReadWriteCloser {
 	// This goroutine simulates a device sending data periodically.
 	go func() {
 		// Ticker will fire every 2 seconds.
-		// ticker := time.NewTicker(2 * time.Second)
-		ticker := time.NewTicker(100 * time.Millisecond)
+		// ticker := time.NewTicker(1 * time.Second)
+		ticker := time.NewTicker(200 * time.Millisecond)
 
 		defer ticker.Stop()
 

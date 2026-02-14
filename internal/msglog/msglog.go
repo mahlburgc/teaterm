@@ -98,6 +98,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.filterString = string(msg)
 		m.scrollIndex = 0 // reset scrolling
 		m.filterLog(m.filterString)
+		m.UpdateVp()
 
 	case events.SendMsg:
 		m.addMsg(msg.Data, txMsg)
@@ -194,6 +195,8 @@ func (m *Model) SetSize(width, height int) {
 
 	m.Vp.Width = width - borderWidth
 	m.Vp.Height = height - borderHeight
+
+	m.scrollIndex = 0
 
 	m.UpdateVp()
 }
@@ -301,6 +304,12 @@ func (m *Model) addMsg(msg string, msgType int) {
 		m.serialLog.Println(line.String())
 	}
 
+	log.Printf("|--addMsg--|")
+	log.Printf("len(m.log):    %v\n", len(m.log))
+	log.Printf("m.scrollIndex: %v\n", m.scrollIndex)
+	log.Printf("m.atBottom:    %v\n", m.atBottom())
+	log.Printf("m.atTop:       %v\n", m.atTop())
+
 	atBottom := m.atBottom()
 
 	switch msgType {
@@ -318,11 +327,11 @@ func (m *Model) addMsg(msg string, msgType int) {
 	if len(m.log) > m.logLimit {
 		m.log = m.log[len(m.log)-m.logLimit:]
 		m.log[0] = m.startMsg()
-		// if scrolled up, we still want to have a fixed screen if the message log limit reached
-		// so we manually scroll up in command history till we reach beginning of message log
-		if atBottom == false {
-			m.scrollUp(1)
-		}
+		// // if scrolled up, we still want to have a fixed screen if the message log limit reached
+		// // so we manually scroll up in command history till we reach beginning of message log
+		// if atBottom == false {
+		// 	m.scrollUp(1)
+		// }
 	}
 
 	// always reset vp to bottom if we send new messages or receive info or error messages
@@ -331,6 +340,10 @@ func (m *Model) addMsg(msg string, msgType int) {
 	}
 
 	m.filterLog(m.filterString)
+	if atBottom == false {
+		m.scrollUp(1)
+	}
+	m.UpdateVp()
 }
 
 func (m *Model) startMsg() string {
@@ -459,5 +472,4 @@ func (m *Model) filterLog(msg string) {
 		}
 		m.logFiltered = filtered
 	}
-	m.UpdateVp()
 }
