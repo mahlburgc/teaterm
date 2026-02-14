@@ -350,7 +350,7 @@ func (m *Model) addMsg(msg string, msgType int) {
 
 func (m *Model) startMsg() string {
 	return styles.MsgLogStartRenderStyle.Render(
-		fmt.Sprintf("Message log start (limit: %d lines)", m.logLimit))
+		fmt.Sprintf("Message log start (limit: %v lines)", m.logLimit))
 }
 
 func (m *Model) UpdateVp() {
