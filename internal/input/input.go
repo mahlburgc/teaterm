@@ -58,7 +58,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	// using them for navigation.
 	if msg, ok := msg.(tea.KeyMsg); ok {
 		switch msg.String() {
-		case "alt+j", "alt+k", "alt+h", "alt+l":
+		case "alt+j", "alt+k", "alt+h", "alt+l", "home", "end":
 			return m, nil
 		}
 	}

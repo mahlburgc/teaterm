@@ -74,6 +74,7 @@ func New(showTimestamp bool, showEscapes bool, sendStyle lipgloss.Style,
 	m.logFiltered = []string{}
 
 	m.log = append(m.log, m.startMsg())
+	m.logFiltered = append(m.logFiltered, m.startMsg())
 
 	m.txPrefix = ""
 	m.rxPrefix = ""
@@ -325,19 +326,24 @@ func (m *Model) addMsg(msg string, msgType int) {
 	}
 
 	m.log = append(m.log, renderedString)
+	matchFound := m.appendToFilteredLog(renderedString, m.filterString)
 
 	// message histrory limit, remove oldest if exceed
 	if len(m.log) > m.logLimit {
-		m.log = m.log[len(m.log)-m.logLimit:]
+		m.log = m.log[1:]
 		m.log[0] = m.startMsg()
 	}
 
-	m.filterLog(m.filterString)
+	// filtered message histrory limit, remove oldest if exceed
+	if len(m.logFiltered) > m.logLimit {
+		m.logFiltered = m.logFiltered[1:]
+		m.logFiltered[0] = m.startMsg()
+	}
 
 	// always reset vp to bottom if we send new messages or receive info or error messages
 	if msgType != rxMsg {
 		m.scrollToBottom()
-	} else if atBottom == false {
+	} else if atBottom == false && matchFound {
 		m.scrollUp(1)
 	}
 }
@@ -439,23 +445,27 @@ func openEditorCmd(content []string) tea.Cmd {
 
 // FILTER METHODS
 
-// TODO: CURRENTLY NOT USED
-// Could be used to filter new receive messages without always filter the whole log!
-//
 // FilterSingleMsg is the easy-to-use method for checking a single line against a query.
 // It handles the regex compilation overhead internally.
-func (m *Model) appendToFilteredLog(line string, query string) {
+func (m *Model) appendToFilteredLog(line string, query string) bool {
+	var matchFound bool
+
 	if query == "" {
 		m.logFiltered = append(m.logFiltered, line)
+		matchFound = true
+		m.needsUpdate = true
 	} else {
 		searchWords := strings.Fields(strings.ToLower(query))
 		searchRegexps := getRegexSearch(searchWords)
 
 		if highlighted, matches := m.filterMsg(line, searchWords, searchRegexps); matches {
 			m.logFiltered = append(m.logFiltered, highlighted)
+			matchFound = true
+			m.needsUpdate = true
 		}
 	}
-	m.needsUpdate = true
+
+	return matchFound
 }
 
 // filterLog processes the entire log.
