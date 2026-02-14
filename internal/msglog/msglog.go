@@ -38,6 +38,7 @@ type Model struct {
 	msgCnt        int // rx and tx messages during one session
 	filterString  string
 	scrollIndex   int
+	needsUpdate   bool
 }
 
 // This message is sent when the editor is closed.
@@ -72,6 +73,8 @@ func New(showTimestamp bool, showEscapes bool, sendStyle lipgloss.Style,
 	m.log = []string{}
 	m.logFiltered = []string{}
 
+	m.log = append(m.log, m.startMsg())
+
 	m.txPrefix = ""
 	m.rxPrefix = ""
 	m.errPrefix = "ERROR: "
@@ -81,6 +84,7 @@ func New(showTimestamp bool, showEscapes bool, sendStyle lipgloss.Style,
 	m.logLimit = logLimit
 	m.msgCnt = 0
 	m.filterString = ""
+	m.needsUpdate = false
 
 	m.sendStyle = sendStyle
 	m.errStyle = errStyle
@@ -91,14 +95,15 @@ func New(showTimestamp bool, showEscapes bool, sendStyle lipgloss.Style,
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
-	// viewport will be managed completely manually, so viewports update function will not be called.
+	// viewport will be managed completely manually,
+	// so viewports update function will not be called.
 
 	switch msg := msg.(type) {
+
 	case events.MsgLogFilterStringMsg:
 		m.filterString = string(msg)
-		m.scrollIndex = 0 // reset scrolling
-		m.filterLog(m.filterString)
-		m.UpdateVp()
+		m.scrollIndex = 0           // reset scrolling
+		m.filterLog(m.filterString) // only filter whole log if new filter string was set
 
 	case events.SendMsg:
 		m.addMsg(msg.Data, txMsg)
@@ -110,11 +115,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if msg != nil {
 			m.addMsg(msg.Error(), errMsg)
 		}
-		return m, nil
 
 	case events.InfoMsg:
 		m.addMsg(string(msg), infoMsg)
-		return m, nil
 
 	case tea.MouseMsg:
 		switch msg.Button {
@@ -168,6 +171,11 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, nil
 	}
 
+	if m.needsUpdate {
+		m.needsUpdate = false
+		m.UpdateVp()
+	}
+
 	return m, nil
 }
 
@@ -198,7 +206,7 @@ func (m *Model) SetSize(width, height int) {
 
 	m.scrollIndex = 0
 
-	m.UpdateVp()
+	m.needsUpdate = true
 }
 
 func (m *Model) scrollUp(n int) {
@@ -212,7 +220,7 @@ func (m *Model) scrollUp(n int) {
 		m.scrollIndex = m.maxScrollIndex()
 	}
 
-	m.UpdateVp()
+	m.needsUpdate = true
 }
 
 func (m *Model) maxScrollIndex() int {
@@ -226,7 +234,7 @@ func (m *Model) scrollToTop() {
 
 	m.scrollIndex = m.maxScrollIndex()
 
-	m.UpdateVp()
+	m.needsUpdate = true
 }
 
 func (m *Model) scrollToBottom() {
@@ -236,7 +244,7 @@ func (m *Model) scrollToBottom() {
 
 	m.scrollIndex = 0
 
-	m.UpdateVp()
+	m.needsUpdate = true
 }
 
 func (m *Model) scrollDown(n int) {
@@ -250,7 +258,7 @@ func (m *Model) scrollDown(n int) {
 		m.scrollIndex = 0
 	}
 
-	m.UpdateVp()
+	m.needsUpdate = true
 }
 
 func (m *Model) atTop() bool {
@@ -277,10 +285,6 @@ func (m *Model) addMsg(msg string, msgType int) {
 		line.WriteString(fmt.Sprintf("[%s] ", t))
 	}
 
-	if len(m.log) == 0 {
-		m.log = append(m.log, m.startMsg())
-	}
-
 	switch msgType {
 	case txMsg:
 		line.WriteString(m.txPrefix)
@@ -304,46 +308,38 @@ func (m *Model) addMsg(msg string, msgType int) {
 		m.serialLog.Println(line.String())
 	}
 
-	log.Printf("|--addMsg--|")
-	log.Printf("len(m.log):    %v\n", len(m.log))
-	log.Printf("m.scrollIndex: %v\n", m.scrollIndex)
-	log.Printf("m.atBottom:    %v\n", m.atBottom())
-	log.Printf("m.atTop:       %v\n", m.atTop())
-
 	atBottom := m.atBottom()
 
+	var renderedString string
 	switch msgType {
 	case txMsg:
-		m.log = append(m.log, m.sendStyle.Render(line.String()))
+		renderedString = m.sendStyle.Render(line.String())
 	case errMsg:
-		m.log = append(m.log, m.errStyle.Render(line.String()))
+		renderedString = m.errStyle.Render(line.String())
 	case infoMsg:
-		m.log = append(m.log, m.infoStyle.Render(line.String()))
+		renderedString = m.infoStyle.Render(line.String())
 	case rxMsg:
-		m.log = append(m.log, line.String())
+		renderedString = line.String()
+	default:
+		renderedString = line.String()
 	}
+
+	m.log = append(m.log, renderedString)
 
 	// message histrory limit, remove oldest if exceed
 	if len(m.log) > m.logLimit {
 		m.log = m.log[len(m.log)-m.logLimit:]
 		m.log[0] = m.startMsg()
-		// // if scrolled up, we still want to have a fixed screen if the message log limit reached
-		// // so we manually scroll up in command history till we reach beginning of message log
-		// if atBottom == false {
-		// 	m.scrollUp(1)
-		// }
 	}
+
+	m.filterLog(m.filterString)
 
 	// always reset vp to bottom if we send new messages or receive info or error messages
 	if msgType != rxMsg {
 		m.scrollToBottom()
-	}
-
-	m.filterLog(m.filterString)
-	if atBottom == false {
+	} else if atBottom == false {
 		m.scrollUp(1)
 	}
-	m.UpdateVp()
 }
 
 func (m *Model) startMsg() string {
@@ -441,35 +437,77 @@ func openEditorCmd(content []string) tea.Cmd {
 	})
 }
 
-// filter the message log for
-func (m *Model) filterLog(msg string) {
-	if msg == "" {
+// FILTER METHODS
+
+// TODO: CURRENTLY NOT USED
+// Could be used to filter new receive messages without always filter the whole log!
+//
+// FilterSingleMsg is the easy-to-use method for checking a single line against a query.
+// It handles the regex compilation overhead internally.
+func (m *Model) appendToFilteredLog(line string, query string) {
+	if query == "" {
+		m.logFiltered = append(m.logFiltered, line)
+	} else {
+		searchWords := strings.Fields(strings.ToLower(query))
+		searchRegexps := getRegexSearch(searchWords)
+
+		if highlighted, matches := m.filterMsg(line, searchWords, searchRegexps); matches {
+			m.logFiltered = append(m.logFiltered, highlighted)
+		}
+	}
+	m.needsUpdate = true
+}
+
+// filterLog processes the entire log.
+func (m *Model) filterLog(query string) {
+	if query == "" {
 		m.logFiltered = m.log
 	} else {
-		searchWords := strings.Fields(strings.ToLower(msg))
+		searchWords := strings.Fields(strings.ToLower(query))
+		searchRegexps := getRegexSearch(searchWords)
+
 		filtered := make([]string, 0)
-		for _, line := range m.log {
-			lowerLine := strings.ToLower(line)
-
-			matchesAll := true
-			for _, word := range searchWords {
-				if !strings.Contains(lowerLine, word) {
-					matchesAll = false
-					break
-				}
-			}
-			if matchesAll {
-				highlightedLine := stripansi.Strip(line)
-				for _, word := range searchWords {
-					re := regexp.MustCompile("(?i)" + regexp.QuoteMeta(word))
-
-					highlightedLine = re.ReplaceAllStringFunc(highlightedLine, func(s string) string {
-						return styles.SearchHighlightStyle.Render(s)
-					})
-				}
-				filtered = append(filtered, highlightedLine)
+		for i, line := range m.log {
+			if i == 0 {
+				// first element is start message and should always be included and not be filtered
+				filtered = append(filtered, line)
+			} else if highlighted, matches := m.filterMsg(line, searchWords, searchRegexps); matches {
+				filtered = append(filtered, highlighted)
 			}
 		}
 		m.logFiltered = filtered
 	}
+	m.needsUpdate = true
+}
+
+// filterString performs the actual matching and highlighting.
+// It accepts pre-compiled regexps to ensure high performance during loops.
+func (m *Model) filterMsg(line string, searchWords []string, searchRegexps []*regexp.Regexp) (string, bool) {
+	lowerLine := strings.ToLower(line)
+
+	// Fast Check: Basic string matching first (cheap)
+	for _, word := range searchWords {
+		if !strings.Contains(lowerLine, word) {
+			return "", false
+		}
+	}
+
+	// Highlighting: Regex replacement (expensive, but only done on matches)
+	highlightedLine := stripansi.Strip(line)
+
+	for _, re := range searchRegexps {
+		highlightedLine = re.ReplaceAllStringFunc(highlightedLine, func(s string) string {
+			return styles.SearchHighlightStyle.Render(s)
+		})
+	}
+
+	return highlightedLine, true
+}
+
+func getRegexSearch(searchWords []string) (searchRegexps []*regexp.Regexp) {
+	for _, word := range searchWords {
+		re := regexp.MustCompile("(?i)" + regexp.QuoteMeta(word))
+		searchRegexps = append(searchRegexps, re)
+	}
+	return searchRegexps
 }

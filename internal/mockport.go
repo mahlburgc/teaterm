@@ -34,7 +34,7 @@ func NewMockPort() io.ReadWriteCloser {
 	go func() {
 		// Ticker will fire every 2 seconds.
 		// ticker := time.NewTicker(1 * time.Second)
-		ticker := time.NewTicker(200 * time.Millisecond)
+		ticker := time.NewTicker(10 * time.Millisecond)
 
 		defer ticker.Stop()
 
