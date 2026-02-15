@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -362,16 +363,30 @@ func (m *Model) UpdateVp() {
 	stopIndex := m.getLastViewableElementIndex()
 	content := strings.Join(m.logFiltered[startIndex:stopIndex], "\n")
 
-	// Test
+	// Highlighting logic -> highlight filter matches if currently filtering
 	if m.filterString != "" {
 		searchWords := strings.Fields(strings.ToLower(m.filterString))
-		searchRegexps := getRegexSearch(searchWords)
 
-		// Highlighting: Regex replacement (expensive, but only done on matches and for
-		// visible lines)
-		content = stripansi.Strip(content)
+		if len(searchWords) > 0 {
+			// 1. Escape all words to ensure special characters don't break the regex
+			var escapedWords []string
+			for _, word := range searchWords {
+				escapedWords = append(escapedWords, regexp.QuoteMeta(word))
+			}
 
-		for _, re := range searchRegexps {
+			// 2. Sort by length (Longest First).
+			// This ensures that if you search for "error" and "error_log",
+			// "error_log" is matched as a whole, rather than just "error" inside it.
+			sort.Slice(escapedWords, func(i, j int) bool {
+				return len(escapedWords[i]) > len(escapedWords[j])
+			})
+
+			// 3. Construct a single combined regex: (?i)(word1|word2|word3)
+			combinedPattern := "(?i)(" + strings.Join(escapedWords, "|") + ")"
+			re := regexp.MustCompile(combinedPattern)
+
+			// 4. Perform the replacement in ONE pass
+			content = stripansi.Strip(content)
 			content = re.ReplaceAllStringFunc(content, func(s string) string {
 				return styles.SearchHighlightStyle.Render(s)
 			})
@@ -462,7 +477,6 @@ func openEditorCmd(content []string) tea.Cmd {
 // FILTER METHODS
 
 // FilterSingleMsg is the easy-to-use method for checking a single line against a query.
-// It handles the regex compilation overhead internally.
 func (m *Model) appendToFilteredLog(line string, query string) bool {
 	var matchFound bool
 
@@ -472,10 +486,9 @@ func (m *Model) appendToFilteredLog(line string, query string) bool {
 		m.needsUpdate = true
 	} else {
 		searchWords := strings.Fields(strings.ToLower(query))
-		searchRegexps := getRegexSearch(searchWords)
 
-		if highlighted, matches := m.filterMsg(line, searchWords, searchRegexps); matches {
-			m.logFiltered = append(m.logFiltered, highlighted)
+		if msg, matches := m.filterMsg(line, searchWords); matches {
+			m.logFiltered = append(m.logFiltered, msg)
 			matchFound = true
 			m.needsUpdate = true
 		}
@@ -484,21 +497,21 @@ func (m *Model) appendToFilteredLog(line string, query string) bool {
 	return matchFound
 }
 
-// filterLog processes the entire log.
+// filterLog processes the entire log. We do not highlight any matches here to keep the filter
+// logic fast.
 func (m *Model) filterLog(query string) {
 	if query == "" {
 		m.logFiltered = m.log
 	} else {
 		searchWords := strings.Fields(strings.ToLower(query))
-		searchRegexps := getRegexSearch(searchWords)
 
 		filtered := make([]string, 0)
 		for i, line := range m.log {
 			if i == 0 {
 				// first element is start message and should always be included and not be filtered
 				filtered = append(filtered, line)
-			} else if highlighted, matches := m.filterMsg(line, searchWords, searchRegexps); matches {
-				filtered = append(filtered, highlighted)
+			} else if msg, matches := m.filterMsg(line, searchWords); matches {
+				filtered = append(filtered, msg)
 			}
 		}
 		m.logFiltered = filtered
@@ -506,35 +519,16 @@ func (m *Model) filterLog(query string) {
 	m.needsUpdate = true
 }
 
-// filterString performs the actual matching and highlighting.
-// It accepts pre-compiled regexps to ensure high performance during loops.
-func (m *Model) filterMsg(line string, searchWords []string, searchRegexps []*regexp.Regexp) (string, bool) {
+// filterString performs the actual matching.
+func (m *Model) filterMsg(line string, searchWords []string) (string, bool) {
 	lowerLine := strings.ToLower(line)
 
-	// Fast Check: Basic string matching first (cheap)
+	// Fast Check: Basic string matching (cheap)
 	for _, word := range searchWords {
 		if !strings.Contains(lowerLine, word) {
 			return "", false
 		}
 	}
 
-	// Highlighting: Regex replacement (expensive, but only done on matches)
-	// highlightedLine := stripansi.Strip(line)
-	highlightedLine := line
-
-	// for _, re := range searchRegexps {
-	// 	highlightedLine = re.ReplaceAllStringFunc(highlightedLine, func(s string) string {
-	// 		return styles.SearchHighlightStyle.Render(s)
-	// 	})
-	// }
-
-	return highlightedLine, true
-}
-
-func getRegexSearch(searchWords []string) (searchRegexps []*regexp.Regexp) {
-	for _, word := range searchWords {
-		re := regexp.MustCompile("(?i)" + regexp.QuoteMeta(word))
-		searchRegexps = append(searchRegexps, re)
-	}
-	return searchRegexps
+	return line, true
 }
