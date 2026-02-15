@@ -73,9 +73,6 @@ func New(showTimestamp bool, showEscapes bool, sendStyle lipgloss.Style,
 	m.log = []string{}
 	m.logFiltered = []string{}
 
-	m.log = append(m.log, m.startMsg())
-	m.logFiltered = append(m.logFiltered, m.startMsg())
-
 	m.txPrefix = ""
 	m.rxPrefix = ""
 	m.errPrefix = "ERROR: "
@@ -86,6 +83,9 @@ func New(showTimestamp bool, showEscapes bool, sendStyle lipgloss.Style,
 	m.msgCnt = 0
 	m.filterString = ""
 	m.needsUpdate = false
+
+	m.log = append(m.log, m.startMsg())
+	m.logFiltered = append(m.logFiltered, m.startMsg())
 
 	m.sendStyle = sendStyle
 	m.errStyle = errStyle
@@ -361,6 +361,22 @@ func (m *Model) UpdateVp() {
 	startIndex := m.getFirstViewableElementIndex()
 	stopIndex := m.getLastViewableElementIndex()
 	content := strings.Join(m.logFiltered[startIndex:stopIndex], "\n")
+
+	// Test
+	if m.filterString != "" {
+		searchWords := strings.Fields(strings.ToLower(m.filterString))
+		searchRegexps := getRegexSearch(searchWords)
+
+		// Highlighting: Regex replacement (expensive, but only done on matches and for
+		// visible lines)
+		content = stripansi.Strip(content)
+
+		for _, re := range searchRegexps {
+			content = re.ReplaceAllStringFunc(content, func(s string) string {
+				return styles.SearchHighlightStyle.Render(s)
+			})
+		}
+	}
 	m.Vp.SetContent(content)
 }
 
@@ -503,13 +519,14 @@ func (m *Model) filterMsg(line string, searchWords []string, searchRegexps []*re
 	}
 
 	// Highlighting: Regex replacement (expensive, but only done on matches)
-	highlightedLine := stripansi.Strip(line)
+	// highlightedLine := stripansi.Strip(line)
+	highlightedLine := line
 
-	for _, re := range searchRegexps {
-		highlightedLine = re.ReplaceAllStringFunc(highlightedLine, func(s string) string {
-			return styles.SearchHighlightStyle.Render(s)
-		})
-	}
+	// for _, re := range searchRegexps {
+	// 	highlightedLine = re.ReplaceAllStringFunc(highlightedLine, func(s string) string {
+	// 		return styles.SearchHighlightStyle.Render(s)
+	// 	})
+	// }
 
 	return highlightedLine, true
 }
