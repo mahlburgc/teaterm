@@ -104,11 +104,11 @@ var Default = KeyMap{
 	),
 	LogLeftKey: key.NewBinding(
 		key.WithKeys("ctrl+left", "alt+h"),
-		key.WithHelp("ctrl+left/alt+h", "scroll log left"),
+		key.WithHelp("ctrl+←/alt+h", "scroll log left"),
 	),
 	LogRightKey: key.NewBinding(
 		key.WithKeys("ctrl+right", "alt+l"),
-		key.WithHelp("ctrl+right/alt+l", "scroll log right"),
+		key.WithHelp("ctrl+→/alt+l", "scroll log right"),
 	),
 	LogUpFastKey: key.NewBinding(
 		key.WithKeys("pgup"),
@@ -167,8 +167,8 @@ var Default = KeyMap{
 		key.WithHelp("ctrl+x", "open/close port"),
 	),
 	AutoCompleteKey: key.NewBinding(
-		key.WithKeys("tab"),
-		key.WithHelp("tab", "use auto suggestion"),
+		key.WithKeys("tab", "right"),
+		key.WithHelp("tab/→", "use auto suggestion"),
 	),
 	FilterMsgLogKey: key.NewBinding(
 		key.WithKeys("ctrl+f"),

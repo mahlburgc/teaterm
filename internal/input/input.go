@@ -154,10 +154,15 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 		case key.Matches(msg, keymap.Default.AutoCompleteKey):
 			if m.inputSuggestion != "" {
-				m.ta.SetValue(m.inputSuggestion)
-				return m, m.ta.Focus() // Force cursor to be immediately visible
+				// select input suggestion on tab (always, no matter where current cursor is) or
+				// select input suggestion on righ (only if cursor is at the end) or
+				if (msg.Type == tea.KeyTab) ||
+					(msg.Type == tea.KeyRight && m.ta.LineInfo().ColumnOffset == len(m.ta.Value())) {
+					m.ta.SetValue(m.inputSuggestion)
+					return m, m.ta.Focus() // Force cursor to be immediately visible
+				}
+				return m, nil
 			}
-			return m, nil
 		}
 
 	case events.SendMsg:
