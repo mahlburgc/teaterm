@@ -15,7 +15,6 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/icza/gox/stringsx"
 	"github.com/mahlburgc/teaterm/events"
 	"github.com/mahlburgc/teaterm/internal/keymap"
 	"github.com/mahlburgc/teaterm/internal/styles"
@@ -301,9 +300,10 @@ func (m *Model) addMsg(msg string, msgType int) {
 	}
 
 	if m.showEscapes {
-		line.WriteString(stringsx.Clean(msg))
+		//line.WriteString(fmt.Sprintf("%q", msg)) can be used as alternative
+		line.WriteString(yatStyleFormatter(msg))
 	} else {
-		line.WriteString(msg) // fmt.Printf("%q", msg")
+		line.WriteString(sanitizeAndKeepColors(msg))
 	}
 
 	if m.serialLog != nil {
@@ -347,6 +347,101 @@ func (m *Model) addMsg(msg string, msgType int) {
 	} else if atBottom == false && matchFound {
 		m.scrollUp(1)
 	}
+}
+
+// yatStyleFormatter converts raw serial data into a safely readable string.
+// It replaces control characters with telecom-style tags (e.g., <CR>, <ESC>)
+// and formats non-ASCII binary bytes as Hex (e.g., [FF]).
+func yatStyleFormatter(input string) string {
+	var sb strings.Builder
+
+	// Iterate over raw bytes to catch exactly what came over the serial wire
+	for i := 0; i < len(input); i++ {
+		b := input[i]
+
+		switch {
+		case b < 32:
+			// Bytes 0x00 to 0x1F are standard ASCII Control Characters
+			sb.WriteString(getControlTag(b))
+		case b == 127:
+			// Byte 0x7F is the Delete character
+			sb.WriteString("<DEL>")
+		case b >= 32 && b < 127:
+			// Standard printable ASCII characters
+			sb.WriteByte(b)
+		default:
+			// Extended ASCII or binary payload (Bytes 0x80 to 0xFF)
+			// We format these as Hex so they are visible but harmless
+			sb.WriteString(fmt.Sprintf("[%02X]", b))
+		}
+	}
+
+	return sb.String()
+}
+
+// getControlTag maps standard ASCII control bytes to their readable acronyms.
+func getControlTag(b byte) string {
+	tags := []string{
+		"<NUL>", "<SOH>", "<STX>", "<ETX>", "<EOT>", "<ENQ>", "<ACK>", "<BEL>",
+		"<BS>", "<TAB>", "<LF>", "<VT>", "<FF>", "<CR>", "<SO>", "<SI>",
+		"<DLE>", "<DC1>", "<DC2>", "<DC3>", "<DC4>", "<NAK>", "<SYN>", "<ETB>",
+		"<CAN>", "<EM>", "<SUB>", "<ESC>", "<FS>", "<GS>", "<RS>", "<US>",
+	}
+	if int(b) < len(tags) {
+		return tags[b]
+	}
+	return ""
+}
+
+// colorSeqRegex matches ONLY ANSI Select Graphic Rendition (SGR) sequences.
+// These are the specific escape codes that end in 'm' and control text color and style.
+var colorSeqRegex = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+func sanitizeAndKeepColors(input string) string {
+	// 1. SAFEGUARD: Fix invalid UTF-8 first so it doesn't break string parsing
+	safeStr := strings.ToValidUTF8(input, string('\uFFFD'))
+
+	// 2. EXTRACT: Find all valid color sequences in the string
+	colorMatches := colorSeqRegex.FindAllString(safeStr, -1)
+
+	// Replace them with a temporary, harmless placeholder so they survive the purge.
+	for i, match := range colorMatches {
+		placeholder := fmt.Sprintf("{{{{COLOR_VIP_%d}}}}", i)
+		safeStr = strings.Replace(safeStr, match, placeholder, 1)
+	}
+
+	// 3. PURGE: Now that colors are safely hidden, obliterate ALL control characters.
+	safeStr = strings.Map(func(r rune) rune {
+		// Keep standard Line Feeds
+		if r == '\n' {
+			return r
+		}
+
+		// Convert Tabs to spaces (Tabs often break Lipgloss width calculations)
+		if r == '\t' {
+			return ' ' // Or return -1 if you just want to drop them
+		}
+
+		// DROP ALL OTHER CONTROL CHARACTERS (Bytes 0x00 to 0x1F, and 0x7F)
+		// This strictly kills:
+		// - '\r' (Carriage Return) -> stops text from overwriting itself
+		// - '\x1b' (Escape) -> kills all cursor movements and screen clears
+		// - '\x0E' & '\x0F' (Shift Out/In) -> kills the Matrix character effect
+		// - '\x08' (Backspace) -> stops layout shifting
+		if r < 32 || r == 127 {
+			return -1
+		}
+
+		return r
+	}, safeStr)
+
+	// 4. RESTORE: Put the color sequences back in exactly where they belong
+	for i, match := range colorMatches {
+		placeholder := fmt.Sprintf("{{{{COLOR_VIP_%d}}}}", i)
+		safeStr = strings.Replace(safeStr, placeholder, match, 1)
+	}
+
+	return safeStr
 }
 
 func (m *Model) startMsg() string {
@@ -531,4 +626,46 @@ func (m *Model) filterMsg(line string, searchWords []string) (string, bool) {
 	}
 
 	return line, true
+}
+
+// Creates a payload designed to absolutely
+// stress-test a terminal's parsing, sanitization, and rendering logic.
+func GenerateTestBuffer() string {
+	var sb strings.Builder
+
+	// Tests single-byte control chars like \r, \n, \t, \x0E (Shift Out)
+	sb.WriteString("--- RAW BYTES ---\n")
+	for i := 0; i < 256; i++ {
+		sb.WriteByte(byte(i))
+	}
+	sb.WriteString("\n\n")
+
+	// Valid Color Codes
+	// These SHOULD survive the sanitizeAndKeepColors filter.
+	sb.WriteString("--- COLOR TEST ---\n")
+	sb.WriteString("Normal text. ")
+	sb.WriteString("\x1b[31mThis should be RED.\x1b[0m ")
+	sb.WriteString("\x1b[1;32mThis should be BOLD GREEN.\x1b[0m\n\n")
+
+	// Destructive Layout Sequences
+	// These MUST be stripped by the filter, otherwise TUI layout will get corrupted.
+	sb.WriteString("--- DESTRUCTIVE TEST ---\n")
+	sb.WriteString("If you see a giant gap here ->\x1b[15C<- the cursor moved right.\n")
+	sb.WriteString("If the screen clears after this, we failed.\x1b[2J\n")
+	sb.WriteString("If this line disappears, we failed.\x1b[2K\n")
+	sb.WriteString("If text moves up into your header ->\x1b[5A<- we failed.\n\n")
+
+	// Alternate Character Sets
+	// \x1b(0 tells the terminal to start drawing lines instead of letters.
+	sb.WriteString("--- CHARSET TEST ---\n")
+	sb.WriteString("If this looks like a box -> \x1b(0lqqk\x1b(B <- we failed.\n\n")
+
+	// Malformed/Incomplete Sequences
+	// Tests if the Regex parser hangs or behaves unpredictably.
+	sb.WriteString("--- MALFORMED TEST ---\n")
+	sb.WriteString("Broken ESC 1: \x1b[31 \n")
+	sb.WriteString("Broken ESC 2: \x1b[m \n")
+	sb.WriteString("Lone ESC byte: \x1b \n")
+
+	return sb.String()
 }
