@@ -6,8 +6,6 @@
 
 Teaterm is a simple serial device tool TUI written in GO using the bubbletea framework. It is inspired by tio with a focus on a nice and easy to use user interface.
 
-This version is still very alpha! ;)
-
 ## Installation
 
 Teaterm can be installed with [go](http://go.dev/doc/install).
@@ -71,7 +69,15 @@ source ~/.zshrc
 - easily open editor with current message log
 - timestamp
 - create log files
-- manual disconnect/reconnect to port fro TUI
+- manual disconnect/reconnect to port from TUI
+- auto completion suggestions for send commands based on command history
+- fuzzy finder for command history while typing
+- only auto scroll on new messages if we are at lowest line
+- indicate that we are on lowest line
+- scroll indicator for message log
+- ctrl + page up / down for faster scrolling
+- use ctrl+q for quit
+- on ascii view, ignore non ascii characters
 
 ## Planned features
 
@@ -81,16 +87,8 @@ source ~/.zshrc
 - status bar shows current port settings (e.g. 9600 8N1)
 - create different profiles with separate settings, command histories and predefined commands
 - possibility to create predefined commands / favorites for faster communication with serial CLIs
-- auto completion suggestions for send commands based on command history
-- use list bubble for command history for advanced fuzzy finding
 - make command history length and message log length configurable
-- add scroll bar for message log
-- only auto scroll on new messages if we are at lowest line
-- indicate that we are on lowest line
-- ctrl + page up / down for faster scrolling
-- use ctrl+q for quit
 - choose between ascii and hex view
-- on ascii view, ignore non ascii characters
 - option to display line ending characters
 - use cobra for better cli command handling and flags
 
