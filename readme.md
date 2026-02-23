@@ -13,11 +13,15 @@ This version is still very alpha! ;)
 Teaterm can be installed with [go](http://go.dev/doc/install).
 
 Make sure you go bin path is set correctly to use `go install`.
-To do so, add the following two lines to your `.bashrc` / `.zshrc`:
+To do so, add the following two lines to your `.bashrc` / `.zshrc` and source it:
 
 ```shell
 export PATH=$PATH:/usr/local/go/bin
 export PATH=$PATH:$HOME/go/bin
+```
+
+```shell
+source ~/.bashrc
 ```
 
 Afterwards teaterm can be installed with
