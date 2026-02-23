@@ -10,7 +10,17 @@ This version is still very alpha! ;)
 
 ## Installation
 
-Teaterm can be installed with go.
+Teaterm can be installed with [go](http://go.dev/doc/install).
+
+Make sure you go bin path is set correctly to use `go install`.
+To do so, add the following two lines to your `.bashrc` / `.zshrc`:
+
+```shell
+export PATH=$PATH:/usr/local/go/bin
+export PATH=$PATH:$HOME/go/bin
+```
+
+Afterwards teaterm can be installed with
 
 ```shell
 go install github.com/mahlburgc/teaterm@latest
