@@ -34,7 +34,7 @@ func (m Model) GetHeight() int {
 }
 
 func (m Model) View(connection string) string {
-	versionText := styles.FocusedPromtStyle.Render(" " + m.version)
+	versionText := styles.VersionStyle.Render(" " + m.version)
 	helpPrefix := " | "
 
 	middleWidth := m.width - lipgloss.Width(connection) - lipgloss.Width(versionText)

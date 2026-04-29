@@ -53,7 +53,7 @@ func initialModel(port *io.ReadWriteCloser, showTimestamp bool, cmdHist []string
 		footer:     footer,
 		session:    session,
 		help:       help,
-		showCmdLog: true,
+		showCmdLog: false,
 		showHelp:   false,
 		width:      0,
 		height:     0,
@@ -70,6 +70,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 
 	DbgLogMsgType(msg)
+
+	// When the cmd-history popup is open, Enter "selects" the highlighted
+	// command (already mirrored into the input by cmdhist navigation) and
+	// dismisses the popup. We must intercept it before the input model sees
+	// it, otherwise input would treat Enter as Send and fire the command.
+	if m.showCmdLog {
+		if keyMsg, ok := msg.(tea.KeyMsg); ok && key.Matches(keyMsg, keymap.Default.SendKey) {
+			m.showCmdLog = false
+			return m, nil
+		}
+	}
 
 	m.cmdhist, cmd = m.cmdhist.Update(msg)
 	cmds = append(cmds, cmd)
@@ -106,15 +117,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
-	viewports := lipgloss.JoinHorizontal(
-		lipgloss.Top,
-		m.msglog.View(),
-		m.cmdhist.View(),
-	)
-
 	screen := lipgloss.JoinVertical(
 		lipgloss.Left,
-		viewports,
+		m.msglog.View(),
 		m.input.View(),
 		m.footer.View(m.session.View()),
 	)
@@ -126,6 +131,14 @@ func (m model) View() string {
 		lipgloss.Center,
 		screen,
 	)
+
+	if m.showCmdLog {
+		// Anchor popup to the bottom and lift it above input + footer so it
+		// sits directly above the input, fzf-style.
+		yOff := -(m.input.GetHeight() + m.footer.GetHeight())
+		output = overlay.Composite(m.cmdhist.View(), output,
+			overlay.Center, overlay.Bottom, 0, yOff)
+	}
 
 	if m.showHelp {
 		output = overlay.Composite(m.help.View(), output, overlay.Center, overlay.Center, 0, 0)
@@ -142,13 +155,13 @@ func (m *model) handleKeys(keyMsg tea.KeyMsg) tea.Cmd {
 
 	case key.Matches(keyMsg, keymap.Default.ToggleHistKey):
 		m.showCmdLog = !m.showCmdLog
-		m.updateLayout()
 
 	case key.Matches(keyMsg, keymap.Default.HelpKey):
 		m.showHelp = !m.showHelp
 
 	case key.Matches(keyMsg, keymap.Default.CloseKey, keymap.Default.ResetKey):
 		m.showHelp = false
+		m.showCmdLog = false
 	}
 
 	return nil
@@ -157,22 +170,20 @@ func (m *model) handleKeys(keyMsg tea.KeyMsg) tea.Cmd {
 func (m *model) updateLayout() {
 	footerHeight := m.footer.GetHeight()
 	inputHeight := m.input.GetHeight()
-	viewportsHeight := m.height - inputHeight - footerHeight
-
-	// 75% width for Message Log, 25% for Command History
-	msgLogWidth := (m.width / 4) * 3
-
-	if !m.showCmdLog {
-		msgLogWidth = m.width
-	}
-
-	cmdHistWidth := m.width - msgLogWidth
+	msgLogHeight := m.height - inputHeight - footerHeight
 
 	m.footer.SetWidth(m.width)
 	m.input.SetWidth(m.width)
+	m.msglog.SetSize(m.width, msgLogHeight)
 
-	m.msglog.SetSize(msgLogWidth, viewportsHeight)
-	m.cmdhist.SetSize(cmdHistWidth, viewportsHeight)
+	popupHeight := 10
+	if maxPopup := m.height / 3; maxPopup < popupHeight {
+		popupHeight = maxPopup
+	}
+	if popupHeight < 3 {
+		popupHeight = 3
+	}
+	m.cmdhist.SetSize(m.width, popupHeight)
 }
 
 func RunTui(port *io.ReadWriteCloser, mode serial.Mode, flags Flags, config Config, serialLog *log.Logger) {

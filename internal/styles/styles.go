@@ -11,7 +11,7 @@ var (
 	AdaptiveGray        = lipgloss.AdaptiveColor{Light: "#545454", Dark: "#989898"}
 	AdaptiveGrayTwo     = lipgloss.AdaptiveColor{Light: "#858585", Dark: "#5f5f5f"}
 	AdaptivePink        = lipgloss.AdaptiveColor{Light: "#9f008f", Dark: "#f943e3"}
-	AdaptiveCyan        = lipgloss.AdaptiveColor{Light: "#006362", Dark: "#96ffec"}
+	AdaptiveCyan        = lipgloss.AdaptiveColor{Light: "#006362", Dark: "#43f9c6"}
 	AdaptiveGreen       = lipgloss.AdaptiveColor{Light: "#41ab00", Dark: "#6cff11"}
 	AdaptiveRed         = lipgloss.AdaptiveColor{Light: "#8f0000", Dark: "#be0000"}
 	AdaptiveBorderColor = AdaptiveGray
@@ -19,13 +19,12 @@ var (
 	CursorStyle       = lipgloss.NewStyle().Foreground(AdaptivePink)
 	CursorFilterStyle = lipgloss.NewStyle().Foreground(AdaptiveCyan)
 
-	ConnectSymbolStyle = lipgloss.NewStyle().Foreground(AdaptiveGreen)
-
+	ConnectSymbolStyle      = lipgloss.NewStyle().Foreground(AdaptiveGreen)
 	DisconnectedSymbolStyle = lipgloss.NewStyle().Foreground(AdaptiveRed)
 	FocusedPlaceholderStyle = lipgloss.NewStyle().Foreground(AdaptiveGray)
 	BorderStyle             = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(AdaptiveBorderColor)
 	SelectedCmdStyle        = lipgloss.NewStyle().Foreground(AdaptivePink)
-	VersionStyle            = lipgloss.NewStyle().Foreground(AdaptiveCyan)
+	VersionStyle            = lipgloss.NewStyle().Foreground(AdaptiveGray)
 	SpinnerStyle            = lipgloss.NewStyle().Foreground(AdaptivePink)
 	VpTxMsgStyle            = lipgloss.NewStyle().Foreground(AdaptivePink)
 	ErrMsgStyle             = lipgloss.NewStyle().Foreground(AdaptiveGray)

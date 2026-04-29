@@ -26,6 +26,9 @@ type Model struct {
 	cmdHistIndex    int
 	active          bool
 	cmdHistFiltered []string
+	// cmdHistMatchIdx[i] holds byte offsets of fuzzy-matched runes inside
+	// cmdHistFiltered[i]. nil/empty when no filter is active.
+	cmdHistMatchIdx [][]int
 }
 
 // New creates a new model with default settings.
@@ -51,6 +54,7 @@ func New(cmdHist []string) (m Model) {
 		}
 	}
 	m.cmdHistFiltered = m.cmdHist
+	m.cmdHistMatchIdx = make([][]int, len(m.cmdHist))
 	m.active = true
 
 	return m
@@ -104,7 +108,14 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		case key.Matches(msg, keymap.Default.HistDownKey):
 			return m, m.scrollDown()
 
-		case key.Matches(msg, keymap.Default.ToggleHistKey, keymap.Default.ResetKey):
+		case key.Matches(msg, keymap.Default.ToggleHistKey):
+			// Preserve the filter so the popup opens already filtered by
+			// whatever is in the input. Discard the cmd from ResetVp because
+			// it would emit HistCmdSelected("") and clear the input.
+			m.ResetVp(false)
+			return m, nil
+
+		case key.Matches(msg, keymap.Default.ResetKey):
 			return m, m.ResetVp(true)
 
 		default:
@@ -157,14 +168,16 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 func (m *Model) runFuzzySearch(msg string) {
 	if msg == "" {
 		m.cmdHistFiltered = m.cmdHist
+		m.cmdHistMatchIdx = make([][]int, len(m.cmdHist))
 	} else {
-		matches := fuzzy.Find(msg, m.cmdHist)
+		matches := fuzzy.FindNoSort(msg, m.cmdHist)
 		m.cmdHistFiltered = make([]string, len(matches))
+		m.cmdHistMatchIdx = make([][]int, len(matches))
 		for i, match := range matches {
-			m.cmdHistFiltered[len(matches)-1-i] = match.Str
+			m.cmdHistFiltered[i] = match.Str
+			m.cmdHistMatchIdx[i] = match.MatchedIndexes
 		}
 	}
-	// log.Printf("Filetered command list: %v", m.cmdHistFiltered)
 
 	m.ResetVp(false)
 }
@@ -264,11 +277,22 @@ func (m *Model) scrollDown() (c tea.Cmd) {
 func (m *Model) updateCmdHistView() (c tea.Cmd) {
 	cmdHistLines := make([]string, len(m.cmdHistFiltered))
 	for i, cmd := range m.cmdHistFiltered {
+		var idx []int
+		if i < len(m.cmdHistMatchIdx) {
+			idx = m.cmdHistMatchIdx[i]
+		}
 		if i == m.cmdHistIndex {
-			cmdHistLines[i] = zone.Mark(strconv.Itoa(i), m.SelectStyle.Render("> "+cmd))
+			const prefix = "> "
+			shifted := make([]int, len(idx))
+			for k, ix := range idx {
+				shifted[k] = ix + len(prefix)
+			}
+			line := highlightMatches(prefix+cmd, shifted, m.SelectStyle, styles.SearchHighlightStyle)
+			cmdHistLines[i] = zone.Mark(strconv.Itoa(i), line)
 			c = SendCmdSelectedMsg(m.cmdHistFiltered[m.cmdHistIndex])
 		} else {
-			cmdHistLines[i] = zone.Mark(strconv.Itoa(i), cmd)
+			line := highlightMatches(cmd, idx, lipgloss.NewStyle(), styles.SearchHighlightStyle)
+			cmdHistLines[i] = zone.Mark(strconv.Itoa(i), line)
 		}
 	}
 	if c == nil {
@@ -277,6 +301,25 @@ func (m *Model) updateCmdHistView() (c tea.Cmd) {
 	m.Vp.SetContent(lipgloss.NewStyle().Render(strings.Join(cmdHistLines, "\n")))
 
 	return c
+}
+
+func highlightMatches(s string, matchIdx []int, base, hl lipgloss.Style) string {
+	if len(matchIdx) == 0 {
+		return base.Render(s)
+	}
+	matchSet := make(map[int]bool, len(matchIdx))
+	for _, i := range matchIdx {
+		matchSet[i] = true
+	}
+	var b strings.Builder
+	for i, r := range s {
+		if matchSet[i] {
+			b.WriteString(hl.Render(string(r)))
+		} else {
+			b.WriteString(base.Render(string(r)))
+		}
+	}
+	return b.String()
 }
 
 // Delete cmd from command history and reset cmd hist index.
@@ -288,6 +331,9 @@ func (m *Model) deleteCmd() (c tea.Cmd) {
 
 		// 2. Remove from Filtered List
 		m.cmdHistFiltered = append(m.cmdHistFiltered[:m.cmdHistIndex], m.cmdHistFiltered[m.cmdHistIndex+1:]...)
+		if m.cmdHistIndex < len(m.cmdHistMatchIdx) {
+			m.cmdHistMatchIdx = append(m.cmdHistMatchIdx[:m.cmdHistIndex], m.cmdHistMatchIdx[m.cmdHistIndex+1:]...)
+		}
 
 		// 3. Remove from Main History List
 		// We iterate to find the matching string in the main list
@@ -318,6 +364,7 @@ func (m *Model) ResetVp(resetFilter bool) (c tea.Cmd) {
 	if m.Vp.Height > 0 {
 		if resetFilter {
 			m.cmdHistFiltered = m.cmdHist
+			m.cmdHistMatchIdx = make([][]int, len(m.cmdHist))
 		}
 		m.cmdHistIndex = len(m.cmdHistFiltered)
 		c = m.updateCmdHistView()
