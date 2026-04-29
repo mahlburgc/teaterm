@@ -42,7 +42,7 @@ func initialModel(port *io.ReadWriteCloser, showTimestamp bool, cmdHist []string
 	cmdhist := cmdhist.New(cmdHist)
 	msglog := msglog.New(showTimestamp, showEscapes, styles.VpTxMsgStyle,
 		styles.ErrMsgStyle, styles.InfoMsgStyle, serialLog, 50000)
-	footer := footer.New()
+	footer := footer.New(Version)
 	session := session.New(port, selectedPort, selectedMode)
 	help := help.New()
 

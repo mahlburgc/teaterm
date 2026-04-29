@@ -25,6 +25,7 @@ var (
 	FocusedPlaceholderStyle = lipgloss.NewStyle().Foreground(AdaptiveGray)
 	BorderStyle             = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(AdaptiveBorderColor)
 	SelectedCmdStyle        = lipgloss.NewStyle().Foreground(AdaptivePink)
+	VersionStyle            = lipgloss.NewStyle().Foreground(AdaptiveCyan)
 	SpinnerStyle            = lipgloss.NewStyle().Foreground(AdaptivePink)
 	VpTxMsgStyle            = lipgloss.NewStyle().Foreground(AdaptivePink)
 	ErrMsgStyle             = lipgloss.NewStyle().Foreground(AdaptiveGray)
