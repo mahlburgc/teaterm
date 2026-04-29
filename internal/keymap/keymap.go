@@ -34,6 +34,7 @@ type KeyMap struct {
 	CloseKey         key.Binding `group:"Actions"`
 	AutoCompleteKey  key.Binding `group:"Actions"`
 	FilterMsgLogKey  key.Binding `group:"Actions"`
+	DebugKey         key.Binding `group:"Actions"`
 }
 
 // ShortHelp returns keybindings to be shown in the mini help view. It's part
@@ -173,5 +174,9 @@ var Default = KeyMap{
 	FilterMsgLogKey: key.NewBinding(
 		key.WithKeys("ctrl+f"),
 		key.WithHelp("ctrl+f", "filter msg log"),
+	),
+	DebugKey: key.NewBinding(
+		key.WithKeys("ctrl+p"),
+		key.WithHelp("ctrl+p", "debug keybinding"),
 	),
 }
