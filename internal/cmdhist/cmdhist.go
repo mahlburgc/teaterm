@@ -288,7 +288,16 @@ func (m *Model) updateCmdHistView() {
 			for k, ix := range idx {
 				shifted[k] = ix + len(prefix)
 			}
-			line := highlightMatches(prefix+cmd, shifted, m.SelectStyle, styles.SearchHighlightStyle)
+			// Fuzzy matches keep their highlight but get the selection
+			// background so they don't punch holes into the selection bar.
+			hlStyle := styles.SearchHighlightStyle.Background(styles.AdaptiveSelectedBg)
+			line := highlightMatches(prefix+cmd, shifted, m.SelectStyle, hlStyle)
+			// Extend the selection background over the whole line up to the
+			// border. Pad before zone.Mark so the markers don't distort the
+			// width calculation.
+			if pad := m.Vp.Width - lipgloss.Width(line); pad > 0 {
+				line += m.SelectStyle.Render(strings.Repeat(" ", pad))
+			}
 			cmdHistLines[i] = zone.Mark(strconv.Itoa(i), line)
 		} else {
 			line := highlightMatches(cmd, idx, lipgloss.NewStyle(), styles.SearchHighlightStyle)
