@@ -207,7 +207,7 @@ func (m *Model) SetSize(width, height int) {
 
 	m.scrollIndex = 0
 
-	m.needsUpdate = true
+	m.UpdateVp()
 }
 
 func (m *Model) scrollUp(n int) {
@@ -300,7 +300,7 @@ func (m *Model) addMsg(msg string, msgType int) {
 	}
 
 	if m.showEscapes {
-		//line.WriteString(fmt.Sprintf("%q", msg)) can be used as alternative
+		// line.WriteString(fmt.Sprintf("%q", msg)) can be used as alternative
 		line.WriteString(yatStyleFormatter(msg))
 	} else {
 		line.WriteString(sanitizeAndKeepColors(msg))

@@ -78,6 +78,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.showCmdLog {
 		if keyMsg, ok := msg.(tea.KeyMsg); ok && key.Matches(keyMsg, keymap.Default.SendKey) {
 			m.showCmdLog = false
+			m.updateLayout()
 			return m, nil
 		}
 	}
@@ -120,6 +121,17 @@ func (m model) View() string {
 	screen := lipgloss.JoinVertical(
 		lipgloss.Left,
 		m.msglog.View(),
+	)
+	if m.showCmdLog {
+		screen = lipgloss.JoinVertical(
+			lipgloss.Left,
+			screen,
+			m.cmdhist.View(),
+		)
+	}
+	screen = lipgloss.JoinVertical(
+		lipgloss.Left,
+		screen,
 		m.input.View(),
 		m.footer.View(m.session.View()),
 	)
@@ -132,13 +144,14 @@ func (m model) View() string {
 		screen,
 	)
 
-	if m.showCmdLog {
-		// Anchor popup to the bottom and lift it above input + footer so it
-		// sits directly above the input, fzf-style.
-		yOff := -(m.input.GetHeight() + m.footer.GetHeight())
-		output = overlay.Composite(m.cmdhist.View(), output,
-			overlay.Center, overlay.Bottom, 0, yOff)
-	}
+	// Command Log overlay option
+	// if m.showCmdLog {
+	// 	// Anchor popup to the bottom and lift it above input + footer so it
+	// 	// sits directly above the input, fzf-style.
+	// 	yOff := -(m.input.GetHeight() + m.footer.GetHeight())
+	// 	output = overlay.Composite(m.cmdhist.View(), output,
+	// 		overlay.Center, overlay.Bottom, 0, yOff)
+	// }
 
 	if m.showHelp {
 		output = overlay.Composite(m.help.View(), output, overlay.Center, overlay.Center, 0, 0)
@@ -155,6 +168,7 @@ func (m *model) handleKeys(keyMsg tea.KeyMsg) tea.Cmd {
 
 	case key.Matches(keyMsg, keymap.Default.ToggleHistKey):
 		m.showCmdLog = !m.showCmdLog
+		m.updateLayout()
 
 	case key.Matches(keyMsg, keymap.Default.HelpKey):
 		m.showHelp = !m.showHelp
@@ -170,20 +184,27 @@ func (m *model) handleKeys(keyMsg tea.KeyMsg) tea.Cmd {
 func (m *model) updateLayout() {
 	footerHeight := m.footer.GetHeight()
 	inputHeight := m.input.GetHeight()
-	msgLogHeight := m.height - inputHeight - footerHeight
+
+	cmdLogHeight := 10
+	maxCmdLogHeight := m.height / 3
+	if maxCmdLogHeight < cmdLogHeight {
+		cmdLogHeight = maxCmdLogHeight
+	}
+	if cmdLogHeight < 3 {
+		cmdLogHeight = 3
+	}
+
+	var msgLogHeight int
+	if m.showCmdLog {
+		msgLogHeight = m.height - cmdLogHeight - inputHeight - footerHeight
+	} else {
+		msgLogHeight = m.height - inputHeight - footerHeight
+	}
 
 	m.footer.SetWidth(m.width)
 	m.input.SetWidth(m.width)
 	m.msglog.SetSize(m.width, msgLogHeight)
-
-	popupHeight := 10
-	if maxPopup := m.height / 3; maxPopup < popupHeight {
-		popupHeight = maxPopup
-	}
-	if popupHeight < 3 {
-		popupHeight = 3
-	}
-	m.cmdhist.SetSize(m.width, popupHeight)
+	m.cmdhist.SetSize(m.width, cmdLogHeight)
 }
 
 func RunTui(port *io.ReadWriteCloser, mode serial.Mode, flags Flags, config Config, serialLog *log.Logger) {
