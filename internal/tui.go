@@ -72,13 +72,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	DbgLogMsgType(msg)
 
 	// When the cmd-history popup is open, Enter "selects" the highlighted
-	// command (already mirrored into the input by cmdhist navigation) and
-	// dismisses the popup. We must intercept it before the input model sees
-	// it, otherwise input would treat Enter as Send and fire the command.
+	// command into the input and dismisses the popup. We must intercept it
+	// before the input model sees it, otherwise input would treat Enter as
+	// Send and fire the command.
 	if m.showCmdLog {
 		if keyMsg, ok := msg.(tea.KeyMsg); ok && key.Matches(keyMsg, keymap.Default.SendKey) {
+			// Read the selection before updateLayout: it triggers
+			// cmdhist.SetSize -> ResetVp, which resets the selection
+			// to the last item.
+			selected := m.cmdhist.GetSelectedCmd()
 			m.showCmdLog = false
 			m.updateLayout()
+			if selected != "" {
+				return m, cmdhist.SendCmdSelectedMsg(selected)
+			}
 			return m, nil
 		}
 	}
@@ -144,15 +151,6 @@ func (m model) View() string {
 		screen,
 	)
 
-	// Command Log overlay option
-	// if m.showCmdLog {
-	// 	// Anchor popup to the bottom and lift it above input + footer so it
-	// 	// sits directly above the input, fzf-style.
-	// 	yOff := -(m.input.GetHeight() + m.footer.GetHeight())
-	// 	output = overlay.Composite(m.cmdhist.View(), output,
-	// 		overlay.Center, overlay.Bottom, 0, yOff)
-	// }
-
 	if m.showHelp {
 		output = overlay.Composite(m.help.View(), output, overlay.Center, overlay.Center, 0, 0)
 	}
@@ -176,6 +174,7 @@ func (m *model) handleKeys(keyMsg tea.KeyMsg) tea.Cmd {
 	case key.Matches(keyMsg, keymap.Default.CloseKey, keymap.Default.ResetKey):
 		m.showHelp = false
 		m.showCmdLog = false
+		m.updateLayout()
 	}
 
 	return nil

@@ -100,23 +100,27 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, keymap.Default.DeleteCmdKey):
-			return m, m.deleteCmd() // TODO fix command deletion
+			m.deleteCmd() // TODO fix command deletion
+			return m, nil
 
 		case key.Matches(msg, keymap.Default.HistUpKey):
-			return m, m.scrollUp()
+			m.scrollUp()
+			return m, nil
 
 		case key.Matches(msg, keymap.Default.HistDownKey):
-			return m, m.scrollDown()
+			m.scrollDown()
+			return m, nil
 
 		case key.Matches(msg, keymap.Default.ToggleHistKey):
-			// Preserve the filter so the popup opens already filtered by
-			// whatever is in the input. Discard the cmd from ResetVp because
-			// it would emit HistCmdSelected("") and clear the input.
+			// The filter itself is preserved here: the input broadcasts its
+			// current value as PartialTxMsg on this key, so the popup opens
+			// already filtered by whatever is in the input.
 			m.ResetVp(false)
 			return m, nil
 
 		case key.Matches(msg, keymap.Default.ResetKey):
-			return m, m.ResetVp(true)
+			m.ResetVp(true)
+			return m, nil
 
 		default:
 			return m, nil
@@ -144,7 +148,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			msg.Action == tea.MouseActionPress ||
 			msg.Action == tea.MouseActionMotion ||
 			m.cmdHistIndex == len(m.cmdHistFiltered) {
-			return m, m.updateCmdHistView()
+			m.updateCmdHistView()
+			return m, nil
 		}
 
 		if msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionRelease {
@@ -201,14 +206,16 @@ func (m *Model) findCmd(msg string) tea.Cmd {
 	return nil
 }
 
-// Returns a Tea command to send a message with the mouse selected cmd to the event loop.
+// Returns a Tea command that mirrors the given cmd into the input
+// (events.HistCmdSelected). Used when the selection is confirmed with Enter.
 func SendCmdSelectedMsg(cmd string) tea.Cmd {
 	return func() tea.Msg {
 		return events.HistCmdSelected(cmd)
 	}
 }
 
-// Returns a Tea command to send a message with the arrow selected cmd to the event loop.
+// Returns a Tea command that directly transmits the given cmd
+// (events.SendMsg). Used when a command is clicked with the mouse.
 func SendCmdExecutedMsg(cmd string) tea.Cmd {
 	return func() tea.Msg {
 		return events.SendMsg{Data: cmd, FromCmdHist: true}
@@ -235,7 +242,7 @@ func (m *Model) SetSize(width, height int) {
 
 // TODO (cma): if hight is too low, selected command is not shown
 // scrollUp moves selection up and handles scroll padding at the top.
-func (m *Model) scrollUp() tea.Cmd {
+func (m *Model) scrollUp() {
 	if m.cmdHistIndex > 0 {
 		m.cmdHistIndex--
 
@@ -247,34 +254,28 @@ func (m *Model) scrollUp() tea.Cmd {
 			m.Vp.SetYOffset(m.cmdHistIndex)
 		}
 	}
-	return m.updateCmdHistView()
+	m.updateCmdHistView()
 }
 
 // scrollDown moves selection down and handles scroll padding at the bottom.
-func (m *Model) scrollDown() (c tea.Cmd) {
-	if m.cmdHistIndex < len(m.cmdHistFiltered) {
+func (m *Model) scrollDown() {
+	if m.cmdHistIndex < len(m.cmdHistFiltered)-1 {
 		m.cmdHistIndex++
 
-		if m.cmdHistIndex < len(m.cmdHistFiltered) {
-			bottomEdge := m.Vp.YOffset + m.Vp.Height - 1
+		bottomEdge := m.Vp.YOffset + m.Vp.Height - 1
 
-			// If index enters the bottom padding zone, scroll viewport down.
-			if m.cmdHistIndex > bottomEdge-scrollPadding && m.Vp.YOffset+m.Vp.Height < len(m.cmdHistFiltered) {
-				m.Vp.ScrollDown(1)
-			} else if m.cmdHistIndex > bottomEdge {
-				// Safety fallback: if we are strictly below the view, snap to it.
-				m.Vp.SetYOffset(m.cmdHistIndex - m.Vp.Height + 1)
-			}
-		} else {
-			// Selection reached the empty end prompt
-			m.Vp.GotoBottom()
+		// If index enters the bottom padding zone, scroll viewport down.
+		if m.cmdHistIndex > bottomEdge-scrollPadding && m.Vp.YOffset+m.Vp.Height < len(m.cmdHistFiltered) {
+			m.Vp.ScrollDown(1)
+		} else if m.cmdHistIndex > bottomEdge {
+			// Safety fallback: if we are strictly below the view, snap to it.
+			m.Vp.SetYOffset(m.cmdHistIndex - m.Vp.Height + 1)
 		}
-		c = m.updateCmdHistView()
 	}
-	return m.updateCmdHistView()
+	m.updateCmdHistView()
 }
 
-func (m *Model) updateCmdHistView() (c tea.Cmd) {
+func (m *Model) updateCmdHistView() {
 	cmdHistLines := make([]string, len(m.cmdHistFiltered))
 	for i, cmd := range m.cmdHistFiltered {
 		var idx []int
@@ -289,18 +290,12 @@ func (m *Model) updateCmdHistView() (c tea.Cmd) {
 			}
 			line := highlightMatches(prefix+cmd, shifted, m.SelectStyle, styles.SearchHighlightStyle)
 			cmdHistLines[i] = zone.Mark(strconv.Itoa(i), line)
-			c = SendCmdSelectedMsg(m.cmdHistFiltered[m.cmdHistIndex])
 		} else {
 			line := highlightMatches(cmd, idx, lipgloss.NewStyle(), styles.SearchHighlightStyle)
 			cmdHistLines[i] = zone.Mark(strconv.Itoa(i), line)
 		}
 	}
-	if c == nil {
-		c = SendCmdSelectedMsg("")
-	}
 	m.Vp.SetContent(lipgloss.NewStyle().Render(strings.Join(cmdHistLines, "\n")))
-
-	return c
 }
 
 func highlightMatches(s string, matchIdx []int, base, hl lipgloss.Style) string {
@@ -323,7 +318,7 @@ func highlightMatches(s string, matchIdx []int, base, hl lipgloss.Style) string 
 }
 
 // Delete cmd from command history and reset cmd hist index.
-func (m *Model) deleteCmd() (c tea.Cmd) {
+func (m *Model) deleteCmd() {
 	// Check if index is valid within the currently visible (filtered) list
 	if m.cmdHistIndex >= 0 && m.cmdHistIndex < len(m.cmdHistFiltered) {
 		// 1. Identify the command to delete
@@ -353,12 +348,11 @@ func (m *Model) deleteCmd() (c tea.Cmd) {
 		log.Printf("Command deleted: %s", cmdToDelete)
 
 		// 5. Update the view to reflect the deletion without losing the current search context
-		c = m.updateCmdHistView()
+		m.updateCmdHistView()
 	}
-	return c
 }
 
-func (m *Model) ResetVp(resetFilter bool) (c tea.Cmd) {
+func (m *Model) ResetVp(resetFilter bool) {
 	log.Printf("reset cmd vp: vp height, msg len: %v, %v\n", m.Vp.Height, len(m.cmdHist))
 
 	if m.Vp.Height > 0 {
@@ -366,16 +360,20 @@ func (m *Model) ResetVp(resetFilter bool) (c tea.Cmd) {
 			m.cmdHistFiltered = m.cmdHist
 			m.cmdHistMatchIdx = make([][]int, len(m.cmdHist))
 		}
-		m.cmdHistIndex = len(m.cmdHistFiltered)
-		c = m.updateCmdHistView()
+
+		if len(m.cmdHistFiltered) > 0 {
+			m.cmdHistIndex = len(m.cmdHistFiltered) - 1
+		} else {
+			m.cmdHistIndex = 0
+		}
+		m.updateCmdHistView()
 		m.Vp.GotoBottom()
 	}
-	return c
 }
 
 // Add a new command to the command history. The command will only be added, if not
 // already exisiting in the hist. If cmd is found, it will be moved to the end.
-func (m *Model) AddCmd(newCmd string) (c tea.Cmd) {
+func (m *Model) AddCmd(newCmd string) {
 	log.Printf("add command: %s\n", newCmd)
 	foundIndex := -1
 	for i, cmd := range m.cmdHist {
@@ -392,9 +390,18 @@ func (m *Model) AddCmd(newCmd string) (c tea.Cmd) {
 		m.cmdHist = append(m.cmdHist, newCmd)
 	}
 
-	return m.ResetVp(true)
+	m.ResetVp(true)
 }
 
 func (m Model) GetCmdHist() []string {
 	return m.cmdHist
+}
+
+// GetSelectedCmd returns the currently highlighted command,
+// or "" if nothing is selected.
+func (m Model) GetSelectedCmd() string {
+	if m.cmdHistIndex >= 0 && m.cmdHistIndex < len(m.cmdHistFiltered) {
+		return m.cmdHistFiltered[m.cmdHistIndex]
+	}
+	return ""
 }

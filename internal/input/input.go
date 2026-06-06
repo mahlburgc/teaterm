@@ -143,6 +143,16 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				return m, m.Reset()
 			}
 
+		case key.Matches(msg, keymap.Default.ToggleHistKey):
+			// Broadcast the current input so the command history popup
+			// opens already filtered by it (or unfiltered if it is empty).
+			if !m.isMsgLogFilterMode {
+				inputVal := m.ta.Value()
+				return m, func() tea.Msg {
+					return events.PartialTxMsg(inputVal)
+				}
+			}
+
 		case key.Matches(msg, keymap.Default.FilterMsgLogKey):
 			if m.ta.Focused() {
 				if !m.isMsgLogFilterMode {
@@ -159,7 +169,13 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				if (msg.Type == tea.KeyTab) ||
 					(msg.Type == tea.KeyRight && m.ta.LineInfo().ColumnOffset == len(m.ta.Value())) {
 					m.ta.SetValue(m.inputSuggestion)
-					return m, m.ta.Focus() // Force cursor to be immediately visible
+					// SetValue bypasses ta.Update, so broadcast the new value
+					// to keep the command history filter in sync.
+					inputVal := m.ta.Value()
+					partialTxMsgCmd := func() tea.Msg {
+						return events.PartialTxMsg(inputVal)
+					}
+					return m, tea.Batch(m.ta.Focus(), partialTxMsgCmd) // Focus forces cursor to be immediately visible
 				}
 				return m, nil
 			}
