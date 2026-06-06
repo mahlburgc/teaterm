@@ -1,6 +1,6 @@
 # teaterm - a serial terminal TUI
 
-![alt text](preview.png)
+![alt text](vhs/demo-basic.gif)
 
 ## Introduction
 
