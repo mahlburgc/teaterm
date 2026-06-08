@@ -59,8 +59,8 @@ func TestMockPortCli(t *testing.T) {
 	defer port.Close()
 
 	// Startup banner is emitted first.
-	if banner := readChunk(t, port); !strings.Contains(banner, "PowerMon-3000") {
-		t.Errorf("banner = %q, want it to contain %q", banner, "PowerMon-3000")
+	if banner := readChunk(t, port); !strings.Contains(banner, "Power Monitoring IoT Device") {
+		t.Errorf("banner = %q, want it to contain %q", banner, "Power Monitoring IoT Device")
 	}
 
 	// help returns the command list.
@@ -71,8 +71,8 @@ func TestMockPortCli(t *testing.T) {
 
 	// info returns device information.
 	sendCmd(t, port, "info")
-	if info := readChunk(t, port); !strings.Contains(info, "serial:  PM3K-00042") {
-		t.Errorf("info = %q, want it to contain the serial number", info)
+	if info := readChunk(t, port); !strings.Contains(info, "Version 2.4.1") {
+		t.Errorf("info = %q, want it to contain the version", info)
 	}
 
 	// Unknown commands return an error.

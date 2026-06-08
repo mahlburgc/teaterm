@@ -128,3 +128,37 @@ func TestAutoCompleteUpdatesHistFilter(t *testing.T) {
 		t.Errorf("after accepting suggestion: selected = %q, want %q", got, "ab")
 	}
 }
+
+// TestClosedPopupRecall verifies shell-style command recall while the
+// command history popup is closed: Up/Down navigates the history and mirrors
+// the command directly into the input (events.HistCmdSelected), starting from
+// the most recent command. Down past the newest recalls an empty input.
+func TestClosedPopupRecall(t *testing.T) {
+	zone.NewGlobal()
+	var port io.ReadWriteCloser
+	port, mode := OpenFakePort()
+	defer port.Close()
+	m := initialModel(&port, false, []string{"alpha", "bravo", "charlie"}, "mock", &mode, nil, false)
+
+	m = processMsg(m, tea.WindowSizeMsg{Width: 80, Height: 30}, nil, 0)
+	if m.showCmdLog {
+		t.Fatal("popup should start closed")
+	}
+
+	var log []string
+	// First Up recalls the most recent command, each further Up an older one.
+	m = processMsg(m, tea.KeyMsg{Type: tea.KeyUp}, &log, 0)
+	m = processMsg(m, tea.KeyMsg{Type: tea.KeyUp}, &log, 0)
+	// Down steps back towards newer commands, then onto the empty prompt.
+	m = processMsg(m, tea.KeyMsg{Type: tea.KeyDown}, &log, 0)
+	m = processMsg(m, tea.KeyMsg{Type: tea.KeyDown}, &log, 0)
+
+	if m.showCmdLog {
+		t.Error("popup must stay closed during recall")
+	}
+
+	want := []string{"charlie", "bravo", "charlie", ""}
+	if strings.Join(log, "|") != strings.Join(want, "|") {
+		t.Errorf("recall mirrored %q into input, want %q", log, want)
+	}
+}

@@ -29,6 +29,11 @@ type Model struct {
 	// cmdHistMatchIdx[i] holds byte offsets of fuzzy-matched runes inside
 	// cmdHistFiltered[i]. nil/empty when no filter is active.
 	cmdHistMatchIdx [][]int
+	// popupOpen mirrors the root model's showCmdLog. When the popup is open,
+	// navigation only moves the highlight (committed to the input on Enter);
+	// when it is closed, navigation recalls commands directly into the input
+	// shell-style. Kept in sync via SetPopupOpen.
+	popupOpen bool
 }
 
 // New creates a new model with default settings.
@@ -104,12 +109,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, nil
 
 		case key.Matches(msg, keymap.Default.HistUpKey):
-			m.scrollUp()
-			return m, nil
+			return m, m.scrollUp()
 
 		case key.Matches(msg, keymap.Default.HistDownKey):
-			m.scrollDown()
-			return m, nil
+			return m, m.scrollDown()
 
 		case key.Matches(msg, keymap.Default.ToggleHistKey):
 			// The filter itself is preserved here: the input broadcasts its
@@ -240,9 +243,20 @@ func (m *Model) SetSize(width, height int) {
 	m.ResetVp(false)
 }
 
+// selectionCmd mirrors the current selection into the input. Used while the
+// popup is closed so navigating the history recalls commands shell-style.
+// An out-of-range index (the empty prompt below the last command) clears the
+// input.
+func (m *Model) selectionCmd() tea.Cmd {
+	if m.cmdHistIndex >= 0 && m.cmdHistIndex < len(m.cmdHistFiltered) {
+		return SendCmdSelectedMsg(m.cmdHistFiltered[m.cmdHistIndex])
+	}
+	return SendCmdSelectedMsg("")
+}
+
 // TODO (cma): if hight is too low, selected command is not shown
 // scrollUp moves selection up and handles scroll padding at the top.
-func (m *Model) scrollUp() {
+func (m *Model) scrollUp() tea.Cmd {
 	if m.cmdHistIndex > 0 {
 		m.cmdHistIndex--
 
@@ -255,24 +269,45 @@ func (m *Model) scrollUp() {
 		}
 	}
 	m.updateCmdHistView()
+	if !m.popupOpen {
+		return m.selectionCmd()
+	}
+	return nil
 }
 
 // scrollDown moves selection down and handles scroll padding at the bottom.
-func (m *Model) scrollDown() {
-	if m.cmdHistIndex < len(m.cmdHistFiltered)-1 {
+func (m *Model) scrollDown() tea.Cmd {
+	// While the popup is open the highlight stops at the last command. While
+	// it is closed navigation may step one past the end onto the empty
+	// prompt, which recalls an empty input (shell-style).
+	upperBound := len(m.cmdHistFiltered)
+	if m.popupOpen {
+		upperBound = len(m.cmdHistFiltered) - 1
+	}
+
+	if m.cmdHistIndex < upperBound {
 		m.cmdHistIndex++
 
-		bottomEdge := m.Vp.YOffset + m.Vp.Height - 1
+		if m.cmdHistIndex < len(m.cmdHistFiltered) {
+			bottomEdge := m.Vp.YOffset + m.Vp.Height - 1
 
-		// If index enters the bottom padding zone, scroll viewport down.
-		if m.cmdHistIndex > bottomEdge-scrollPadding && m.Vp.YOffset+m.Vp.Height < len(m.cmdHistFiltered) {
-			m.Vp.ScrollDown(1)
-		} else if m.cmdHistIndex > bottomEdge {
-			// Safety fallback: if we are strictly below the view, snap to it.
-			m.Vp.SetYOffset(m.cmdHistIndex - m.Vp.Height + 1)
+			// If index enters the bottom padding zone, scroll viewport down.
+			if m.cmdHistIndex > bottomEdge-scrollPadding && m.Vp.YOffset+m.Vp.Height < len(m.cmdHistFiltered) {
+				m.Vp.ScrollDown(1)
+			} else if m.cmdHistIndex > bottomEdge {
+				// Safety fallback: if we are strictly below the view, snap to it.
+				m.Vp.SetYOffset(m.cmdHistIndex - m.Vp.Height + 1)
+			}
+		} else {
+			// Selection reached the empty end prompt.
+			m.Vp.GotoBottom()
 		}
 	}
 	m.updateCmdHistView()
+	if !m.popupOpen {
+		return m.selectionCmd()
+	}
+	return nil
 }
 
 func (m *Model) updateCmdHistView() {
@@ -370,14 +405,27 @@ func (m *Model) ResetVp(resetFilter bool) {
 			m.cmdHistMatchIdx = make([][]int, len(m.cmdHist))
 		}
 
-		if len(m.cmdHistFiltered) > 0 {
-			m.cmdHistIndex = len(m.cmdHistFiltered) - 1
-		} else {
+		switch {
+		case len(m.cmdHistFiltered) == 0:
 			m.cmdHistIndex = 0
+		case m.popupOpen:
+			// Pre-select the most recent command in the open popup.
+			m.cmdHistIndex = len(m.cmdHistFiltered) - 1
+		default:
+			// Rest on the empty prompt below the last command so the first
+			// Up press recalls the most recent command into the input.
+			m.cmdHistIndex = len(m.cmdHistFiltered)
 		}
 		m.updateCmdHistView()
 		m.Vp.GotoBottom()
 	}
+}
+
+// SetPopupOpen keeps the cmd history in sync with the root model's popup
+// visibility. The root calls this from updateLayout before SetSize so a
+// following ResetVp picks the correct resting selection.
+func (m *Model) SetPopupOpen(open bool) {
+	m.popupOpen = open
 }
 
 // Add a new command to the command history. The command will only be added, if not

@@ -203,6 +203,9 @@ func (m *model) updateLayout() {
 	m.footer.SetWidth(m.width)
 	m.input.SetWidth(m.width)
 	m.msglog.SetSize(m.width, msgLogHeight)
+	// Keep cmdhist's popup state in sync before SetSize: SetSize calls
+	// ResetVp, whose resting selection depends on whether the popup is open.
+	m.cmdhist.SetPopupOpen(m.showCmdLog)
 	m.cmdhist.SetSize(m.width, cmdLogHeight)
 }
 
