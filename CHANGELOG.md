@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - command history mode `panel`: history open on start and stays open, enter sends, up/down recall commands
 - configurable command history height (rows or percentage)
 - resize command history during session with `alt+up` / `alt+down`
+- select text in the message log with the mouse, copied to clipboard on release
 - minimal border layout (`layout.borders = "minimal"`): sections only separated by a single line
 
 ### Changed

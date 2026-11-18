@@ -15,6 +15,8 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
+	zone "github.com/lrstanley/bubblezone"
 	"github.com/mahlburgc/teaterm/events"
 	"github.com/mahlburgc/teaterm/internal/keymap"
 	"github.com/mahlburgc/teaterm/internal/styles"
@@ -39,6 +41,10 @@ type Model struct {
 	filterString  string
 	scrollIndex   int
 	needsUpdate   bool
+	xOffset       int       // horizontal scroll offset, mirrors the viewport's
+	sel           selection // mouse text selection
+	notice        string    // short notice in the footer, e.g. "copied 12 chars"
+	noticeID      int
 }
 
 // This message is sent when the editor is closed.
@@ -103,6 +109,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 	case events.MsgLogFilterStringMsg:
 		m.filterString = string(msg)
+		m.clearSelection()
 		m.scrollIndex = 0           // reset scrolling
 		m.filterLog(m.filterString) // only filter whole log if new filter string was set
 
@@ -121,21 +128,35 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.addMsg(string(msg), infoMsg)
 
 	case tea.MouseMsg:
+		var cmd tea.Cmd
 		switch msg.Button {
 		case tea.MouseButtonWheelUp:
 			m.scrollUp(1)
 
 		case tea.MouseButtonWheelDown:
 			m.scrollDown(1)
+
+		default:
+			cmd = m.handleMouse(msg)
+		}
+		if m.needsUpdate {
+			m.needsUpdate = false
+			m.UpdateVp()
+		}
+		return m, cmd
+
+	case clearNoticeMsg:
+		if msg.id == m.noticeID {
+			m.notice = ""
 		}
 
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, keymap.Default.LogLeftKey):
-			m.Vp.ScrollLeft(3)
+			m.scrollHorizontal(-3)
 
 		case key.Matches(msg, keymap.Default.LogRightKey):
-			m.Vp.ScrollRight(3)
+			m.scrollHorizontal(3)
 
 		case key.Matches(msg, keymap.Default.LogUpKey):
 			m.scrollUp(1)
@@ -160,6 +181,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 		case key.Matches(msg, keymap.Default.ClearLogKey):
 			if m.Vp.Height > 0 {
+				m.clearSelection()
 				m.log = nil /* reset serial message log */
 				m.logFiltered = nil
 				m.msgCnt = 0
@@ -196,7 +218,10 @@ func (m Model) View() string {
 	scrollPercentageString := percentRenderStyle.Render(fmt.Sprintf("%3d%%", int(scrollPercentage)))
 
 	footer := borderStyle.Render(fmt.Sprintf("%d ", m.msgCnt)) + scrollPercentageString
-	return styles.AddBorder(m.Vp, "Messages", footer, true)
+	if m.notice != "" {
+		footer = styles.PercentRenderStyle.Render(m.notice) + " " + footer
+	}
+	return zone.Mark(msgLogZone, styles.AddBorder(m.Vp, "Messages", footer, true))
 }
 
 func (m *Model) SetSize(width, height int) {
@@ -206,6 +231,7 @@ func (m *Model) SetSize(width, height int) {
 	m.Vp.Height = height - borderHeight
 
 	m.scrollIndex = 0
+	m.clearSelection()
 
 	m.UpdateVp()
 }
@@ -339,10 +365,17 @@ func (m *Model) addMsg(msg string, msgType int) {
 	if len(m.logFiltered) > m.logLimit {
 		m.logFiltered = m.logFiltered[1:]
 		m.logFiltered[0] = m.startMsg()
+		m.shiftSelection(1)
 	}
 
-	// always reset vp to bottom if we send new messages or receive info or error messages
-	if msgType != rxMsg {
+	// While a mouse selection is ongoing the view is frozen, so the text
+	// under the mouse does not move. Scrolling continues on release.
+	if m.sel.active {
+		if matchFound {
+			m.scrollUp(1)
+		}
+	} else if msgType != rxMsg {
+		// always reset vp to bottom if we send new messages or receive info or error messages
 		m.scrollToBottom()
 	} else if atBottom == false && matchFound {
 		m.scrollUp(1)
@@ -456,7 +489,8 @@ func (m *Model) UpdateVp() {
 
 	startIndex := m.getFirstViewableElementIndex()
 	stopIndex := m.getLastViewableElementIndex()
-	content := strings.Join(m.logFiltered[startIndex:stopIndex], "\n")
+	lines := make([]string, stopIndex-startIndex)
+	copy(lines, m.logFiltered[startIndex:stopIndex])
 
 	// Highlighting logic -> highlight filter matches if currently filtering
 	if m.filterString != "" {
@@ -480,14 +514,28 @@ func (m *Model) UpdateVp() {
 			combinedPattern := "(?i)(" + strings.Join(escapedWords, "|") + ")"
 			re := regexp.MustCompile(combinedPattern)
 
-			// 4. Perform the replacement in ONE pass
-			content = stripansi.Strip(content)
-			content = re.ReplaceAllStringFunc(content, func(s string) string {
-				return styles.SearchHighlightStyle.Render(s)
-			})
+			// 4. Perform the replacement in ONE pass per line
+			for i, line := range lines {
+				line = stripansi.Strip(line)
+				lines[i] = re.ReplaceAllStringFunc(line, func(s string) string {
+					return styles.SearchHighlightStyle.Render(s)
+				})
+			}
 		}
 	}
-	m.Vp.SetContent(content)
+
+	m.highlightSelection(lines, startIndex)
+
+	// Keep the horizontal offset within the visible content, like the
+	// viewport does internally (its offset is not readable).
+	longest := 0
+	for _, line := range lines {
+		longest = max(longest, ansi.StringWidth(line))
+	}
+	m.xOffset = max(0, min(m.xOffset, longest-m.Vp.Width))
+
+	m.Vp.SetContent(strings.Join(lines, "\n"))
+	m.Vp.SetXOffset(m.xOffset)
 }
 
 func (m Model) GetLen() int {

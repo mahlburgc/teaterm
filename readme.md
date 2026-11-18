@@ -85,6 +85,17 @@ borders = "full"
 While the command history is open, its height can be changed during the session with `alt+↑` / `alt+↓`.
 These changes are not stored.
 
+## Copy Text from the Message Log
+
+Select text in the message log by pressing the left mouse button and dragging over it.
+On release, the selected text is copied to the clipboard and the message log footer shows `copied N chars`.
+While dragging, the message log does not scroll on new messages. Dragging beyond the top or bottom edge scrolls the log.
+
+Teaterm copies via the system clipboard and via OSC 52, so at least one of these is needed:
+
+- `wl-copy` (Wayland), `xclip` or `xsel` (X11) installed, or
+- a terminal with OSC 52 support (works over SSH). In tmux, enable it with `set -g set-clipboard on`.
+
 ## External Editor Support
 
 During a teaterm session you can open an external editor of your choice with the current message log by pressing `ctrl+e`. Make sure your `EDITOR` variable is exported in your shell config file. Otherwise `vim` will be called.
@@ -107,6 +118,7 @@ source ~/.zshrc
 - mouse support
     - send commands from command history per mouse click
     - scroll message log
+    - select text in message log, copied to clipboard on release
 - easily open editor with current message log
 - timestamp
 - create log files

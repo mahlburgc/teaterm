@@ -5,6 +5,7 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/bubbles/cursor"
 	tea "github.com/charmbracelet/bubbletea"
@@ -12,6 +13,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	zone "github.com/lrstanley/bubblezone"
 	"github.com/mahlburgc/teaterm/events"
+	"github.com/mahlburgc/teaterm/internal/msglog"
 	"github.com/mahlburgc/teaterm/internal/styles"
 )
 
@@ -307,6 +309,59 @@ func TestMinimalBordersLayout(t *testing.T) {
 				if !strings.Contains(view, title) {
 					t.Errorf("title %q missing", title)
 				}
+			}
+		})
+	}
+}
+
+// TestMouseSelectionCoordinates verifies the mapping from screen coordinates
+// to message log text in both border styles: dragging over the first log
+// line ("Message log start ...") copies exactly the dragged characters.
+func TestMouseSelectionCoordinates(t *testing.T) {
+	for _, minimal := range []bool{false, true} {
+		t.Run(fmt.Sprintf("minimal=%v", minimal), func(t *testing.T) {
+			styles.SetMinimalBorders(minimal)
+			t.Cleanup(func() { styles.SetMinimalBorders(false) })
+
+			var copied []string
+			restore := msglog.SetCopyFunc(func(text string) tea.Cmd {
+				copied = append(copied, text)
+				return nil
+			})
+			t.Cleanup(restore)
+
+			zone.NewGlobal()
+			var port io.ReadWriteCloser
+			port, mode := OpenFakePort()
+			defer port.Close()
+			m := initialModel(&port, false, nil, "mock", &mode, nil, false, DefaultSettings())
+			m = processMsg(m, tea.WindowSizeMsg{Width: 80, Height: 30}, nil, 0)
+
+			// Render once so bubblezone knows where the message log is.
+			m.View()
+			deadline := time.Now().Add(time.Second)
+			for zone.Get("msglog").IsZero() {
+				if time.Now().After(deadline) {
+					t.Fatal("msglog zone not registered")
+				}
+				time.Sleep(5 * time.Millisecond)
+			}
+
+			// First content row is screen row 1, first column is 1 with
+			// full borders (left border) and 0 with minimal borders.
+			x0 := 1
+			if minimal {
+				x0 = 0
+			}
+			press := tea.MouseMsg{X: x0, Y: 1, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress}
+			move := tea.MouseMsg{X: x0 + 6, Y: 1, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion}
+			release := tea.MouseMsg{X: x0 + 6, Y: 1, Button: tea.MouseButtonNone, Action: tea.MouseActionRelease}
+			for _, msg := range []tea.Msg{press, move, release} {
+				m = processMsg(m, msg, nil, 0)
+			}
+
+			if len(copied) != 1 || copied[0] != "Message" {
+				t.Errorf("copied %q, want [Message]", copied)
 			}
 		})
 	}
