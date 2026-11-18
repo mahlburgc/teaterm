@@ -57,7 +57,7 @@ func writeSettings(t *testing.T, content string) string {
 func TestLoadSettingsFile(t *testing.T) {
 	t.Run("missing file uses defaults", func(t *testing.T) {
 		got, err := loadSettingsFile(filepath.Join(t.TempDir(), "nope.toml"))
-		if err != nil || got != DefaultSettings() {
+		if err != nil || got != DefaultSettings() || got.Layout.Borders != BordersFull {
 			t.Fatalf("got %v, %v; want defaults", got, err)
 		}
 	})
@@ -67,9 +67,17 @@ func TestLoadSettingsFile(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := Settings{CmdHist: CmdHistSettings{Mode: HistModePanel, Height: Size{Value: 30, Percent: true}}}
+		want := DefaultSettings()
+		want.CmdHist = CmdHistSettings{Mode: HistModePanel, Height: Size{Value: 30, Percent: true}}
 		if got != want {
 			t.Fatalf("got %v, want %v", got, want)
+		}
+	})
+
+	t.Run("minimal borders", func(t *testing.T) {
+		got, err := loadSettingsFile(writeSettings(t, "[layout]\nborders = \"minimal\"\n"))
+		if err != nil || got.Layout.Borders != BordersMinimal || got.CmdHist != DefaultSettings().CmdHist {
+			t.Fatalf("got %v, %v", got, err)
 		}
 	})
 
@@ -81,6 +89,7 @@ func TestLoadSettingsFile(t *testing.T) {
 	})
 
 	errCases := map[string]string{
+		"bad borders":  "[layout]\nborders = \"none\"\n",
 		"bad mode":     "[cmdhist]\nmode = \"floating\"\n",
 		"bad height":   "[cmdhist]\nheight = \"big\"\n",
 		"bad type":     "[cmdhist]\nheight = true\n",

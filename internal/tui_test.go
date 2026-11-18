@@ -1,14 +1,18 @@
 package internal
 
 import (
+	"fmt"
 	"io"
 	"strings"
 	"testing"
 
 	"github.com/charmbracelet/bubbles/cursor"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	zone "github.com/lrstanley/bubblezone"
 	"github.com/mahlburgc/teaterm/events"
+	"github.com/mahlburgc/teaterm/internal/styles"
 )
 
 // processCmd executes a tea.Cmd and feeds resulting messages back into the
@@ -265,5 +269,45 @@ func TestCmdHistResize(t *testing.T) {
 	m = processMsg(m, tea.KeyMsg{Type: tea.KeyDown, Alt: true}, nil, 0)
 	if got := m.cmdLogHeight(); got != maxH-1 {
 		t.Errorf("alt+down from max: got %d, want %d", got, maxH-1)
+	}
+}
+
+// TestMinimalBordersLayout verifies the minimal border layout: no side
+// borders, nothing wider than the terminal and the component heights add up
+// to the terminal height.
+func TestMinimalBordersLayout(t *testing.T) {
+	for _, minimal := range []bool{false, true} {
+		t.Run(fmt.Sprintf("minimal=%v", minimal), func(t *testing.T) {
+			styles.SetMinimalBorders(minimal)
+			t.Cleanup(func() { styles.SetMinimalBorders(false) })
+
+			zone.NewGlobal()
+			var port io.ReadWriteCloser
+			port, mode := OpenFakePort()
+			defer port.Close()
+			m := initialModel(&port, false, []string{"alpha", "bravo"}, "mock", &mode, nil, false, panelSettings())
+
+			const width, height = 80, 30
+			m = processMsg(m, tea.WindowSizeMsg{Width: width, Height: height}, nil, 0)
+
+			view := ansi.Strip(m.View())
+			lines := strings.Split(view, "\n")
+			if len(lines) != height {
+				t.Errorf("view has %d lines, want %d", len(lines), height)
+			}
+			for i, line := range lines {
+				if w := lipgloss.Width(line); w > width {
+					t.Errorf("line %d is %d wide, want <= %d: %q", i, w, width, line)
+				}
+			}
+			if hasSide := strings.Contains(view, "│"); hasSide == minimal {
+				t.Errorf("side borders present = %v, want %v", hasSide, !minimal)
+			}
+			for _, title := range []string{"Messages", "Commands"} {
+				if !strings.Contains(view, title) {
+					t.Errorf("title %q missing", title)
+				}
+			}
+		})
 	}
 }

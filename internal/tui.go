@@ -249,6 +249,7 @@ func (m *model) resizeCmdHist(delta int) {
 
 func RunTui(port *io.ReadWriteCloser, mode serial.Mode, flags Flags, config Config, serialLog *log.Logger) {
 	zone.NewGlobal()
+	styles.SetMinimalBorders(config.Settings.Layout.Borders == BordersMinimal)
 
 	m := initialModel(port, flags.Timestamp, config.CmdHistoryLines, flags.Port, &mode, serialLog, flags.ShowEscapes, config.Settings)
 

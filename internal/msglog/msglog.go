@@ -200,7 +200,7 @@ func (m Model) View() string {
 }
 
 func (m *Model) SetSize(width, height int) {
-	borderWidth, borderHeight := styles.BorderStyle.GetFrameSize()
+	borderWidth, borderHeight := styles.FrameSize()
 
 	m.Vp.Width = width - borderWidth
 	m.Vp.Height = height - borderHeight

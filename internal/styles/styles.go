@@ -44,8 +44,43 @@ var (
 	SearchHighlightStyle   = lipgloss.NewStyle().Foreground(AdaptiveCyan).Bold(true)
 )
 
+// minimalBorders replaces the full boxes around components by a single
+// separator line above each component. Set once on startup.
+var minimalBorders bool
+
+// SetMinimalBorders switches between full boxes (false) and single separator
+// lines (true) for all components drawn with AddBorder.
+func SetMinimalBorders(minimal bool) {
+	minimalBorders = minimal
+}
+
+// MinimalBorders reports whether the minimal border layout is active.
+func MinimalBorders() bool {
+	return minimalBorders
+}
+
+// SeparatorLine returns a plain horizontal border line of the given width.
+func SeparatorLine(width int) string {
+	border := BorderStyle.GetBorderStyle()
+	return lipgloss.NewStyle().Foreground(AdaptiveBorderColor).
+		Render(strings.Repeat(border.Top, max(0, width)))
+}
+
+// FrameSize returns the horizontal and vertical space used by the border
+// drawn by AddBorder.
+func FrameSize() (width, height int) {
+	if minimalBorders {
+		return 0, 1
+	}
+	return BorderStyle.GetFrameSize()
+}
+
 // Adds a border with title to viewport and returns viewport string.
 func AddBorder(vp viewport.Model, title string, footer string, ownFooterStyle bool) string {
+	if minimalBorders {
+		return addSeparator(vp, title, footer, ownFooterStyle)
+	}
+
 	border := BorderStyle.GetBorderStyle()
 	borderStyle := lipgloss.NewStyle().Foreground(AdaptiveBorderColor)
 
@@ -108,4 +143,41 @@ func AddBorder(vp viewport.Model, title string, footer string, ownFooterStyle bo
 
 	// Join the title bar and the main content vertically.
 	return lipgloss.JoinVertical(lipgloss.Left, vpTitleBar, vpBody, vpFooterBar)
+}
+
+// addSeparator renders the viewport with a single separator line above it.
+// The line holds the title on the left and the footer on the right:
+// ─┤ title ├──────┤ footer ├─
+func addSeparator(vp viewport.Model, title string, footer string, ownFooterStyle bool) string {
+	border := BorderStyle.GetBorderStyle()
+	borderStyle := lipgloss.NewStyle().Foreground(AdaptiveBorderColor)
+
+	var lineTitle string
+	if title != "" {
+		lineTitle = borderStyle.Render(border.Top + border.MiddleRight + " " + title + " " + border.MiddleLeft)
+	}
+
+	var lineFooter string
+	if footer != "" {
+		if ownFooterStyle {
+			lineFooter = borderStyle.Render(border.MiddleRight) + " " + footer + " " +
+				borderStyle.Render(border.MiddleLeft) + borderStyle.Render(border.Top)
+		} else {
+			lineFooter = borderStyle.Render(border.MiddleRight + " " + footer + " " +
+				border.MiddleLeft + border.Top)
+		}
+	}
+
+	// Drop footer, then title, if the line is too narrow.
+	if lipgloss.Width(lineTitle)+lipgloss.Width(lineFooter) > vp.Width {
+		lineFooter = ""
+	}
+	if lipgloss.Width(lineTitle) > vp.Width {
+		lineTitle = ""
+	}
+
+	fill := vp.Width - lipgloss.Width(lineTitle) - lipgloss.Width(lineFooter)
+	line := lineTitle + SeparatorLine(fill) + lineFooter
+
+	return lipgloss.JoinVertical(lipgloss.Left, line, vp.View())
 }

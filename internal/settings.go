@@ -23,6 +23,14 @@ const (
 	HistModePanel = "panel"
 )
 
+// Border styles.
+const (
+	// BordersFull draws a rounded box around every component.
+	BordersFull = "full"
+	// BordersMinimal separates components only by a single line.
+	BordersMinimal = "minimal"
+)
+
 // Size is a size given either as absolute cells (rows/columns) or as a
 // percentage of the available space. The zero value means "auto".
 type Size struct {
@@ -64,9 +72,15 @@ type CmdHistSettings struct {
 	Height Size
 }
 
+// LayoutSettings configures the general look of the TUI.
+type LayoutSettings struct {
+	Borders string
+}
+
 // Settings holds the user settings read from teaterm.toml.
 type Settings struct {
 	CmdHist CmdHistSettings
+	Layout  LayoutSettings
 }
 
 // DefaultSettings returns the settings used if no settings file exists or
@@ -76,6 +90,9 @@ func DefaultSettings() Settings {
 		CmdHist: CmdHistSettings{
 			Mode:   HistModePopup,
 			Height: Size{}, // auto
+		},
+		Layout: LayoutSettings{
+			Borders: BordersFull,
 		},
 	}
 }
@@ -87,6 +104,9 @@ type settingsFile struct {
 		Mode   *string `toml:"mode"`
 		Height any     `toml:"height"` // int (rows) or string ("10", "30%")
 	} `toml:"cmdhist"`
+	Layout struct {
+		Borders *string `toml:"borders"`
+	} `toml:"layout"`
 }
 
 // LoadSettings reads ~/.config/teaterm/teaterm.toml. A missing file is not
@@ -118,6 +138,16 @@ func loadSettingsFile(path string) (Settings, error) {
 		default:
 			return settings, fmt.Errorf("%s: cmdhist.mode: invalid value %q, allowed: %q, %q",
 				path, *file.CmdHist.Mode, HistModePopup, HistModePanel)
+		}
+	}
+
+	if file.Layout.Borders != nil {
+		switch *file.Layout.Borders {
+		case BordersFull, BordersMinimal:
+			settings.Layout.Borders = *file.Layout.Borders
+		default:
+			return settings, fmt.Errorf("%s: layout.borders: invalid value %q, allowed: %q, %q",
+				path, *file.Layout.Borders, BordersFull, BordersMinimal)
 		}
 	}
 

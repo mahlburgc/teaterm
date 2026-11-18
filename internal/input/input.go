@@ -276,12 +276,14 @@ func (m Model) View() string {
 }
 
 func (m *Model) SetWidth(width int) {
-	m.width = width - 2 // -2 because border will be added later
+	borderWidth, _ := styles.FrameSize() // border will be added later
+	m.width = width - borderWidth
 	m.ta.SetWidth(m.width)
 }
 
 func (m Model) GetHeight() int {
-	return m.ta.Height() + 2 // +2 because border will be added later
+	_, borderHeight := styles.FrameSize() // border will be added later
+	return m.ta.Height() + borderHeight
 }
 
 func (m *Model) SetValue(value string) {

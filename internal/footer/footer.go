@@ -58,5 +58,12 @@ func (m Model) View(connection string) string {
 		padWidth = 0
 	}
 
-	return connection + helpRendered + strings.Repeat(" ", padWidth) + versionText
+	footer := connection + helpRendered + strings.Repeat(" ", padWidth) + versionText
+
+	// In the minimal border layout the footer is separated from the input
+	// by a single line. GetHeight picks up the extra line automatically.
+	if styles.MinimalBorders() {
+		return lipgloss.JoinVertical(lipgloss.Left, styles.SeparatorLine(m.width), footer)
+	}
+	return footer
 }

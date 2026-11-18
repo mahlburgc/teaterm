@@ -67,12 +67,20 @@ mode = "popup"
 # If not set: 10 rows, but at most a third of the terminal height.
 # The message log always keeps a minimum height of 3 rows.
 # height = 10
+
+[layout]
+# Border style of message log, command history and input.
+#   "full":    every section is drawn as a box.
+#   "minimal": no side borders, sections are only separated by a single line
+#              that holds the section title and info.
+borders = "full"
 ```
 
 | Setting          | Allowed values                | Default                         |
 | ---------------- | ----------------------------- | ------------------------------- |
 | `cmdhist.mode`   | `"popup"`, `"panel"`          | `"popup"`                       |
 | `cmdhist.height` | rows (`15`, `"15"`), `"1%"`..`"100%"` | 10 rows, max 1/3 of terminal |
+| `layout.borders` | `"full"`, `"minimal"`         | `"full"`                        |
 
 While the command history is open, its height can be changed during the session with `alt+↑` / `alt+↓`.
 These changes are not stored.
