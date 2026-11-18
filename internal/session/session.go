@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -44,7 +45,7 @@ type (
 
 type Model struct {
 	port             *io.ReadWriteCloser
-	scanner          *bufio.Scanner
+	rx               *rxBuffer
 	selectedPort     string
 	selectedMode     *serial.Mode
 	status           int
@@ -59,12 +60,12 @@ func New(port *io.ReadWriteCloser, selectedPort string, selectedMode *serial.Mod
 	sp.Spinner = spinner.Dot
 	sp.Style = styles.SpinnerStyle
 
-	scanner := bufio.NewScanner(*port)
+	rx := startReader(*port)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return Model{
 		port:             port,
-		scanner:          scanner,
+		rx:               rx,
 		selectedPort:     selectedPort,
 		selectedMode:     selectedMode,
 		status:           connected,
@@ -109,6 +110,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 
 	case events.SerialRxMsgReceived:
+		m.rx.ack(string(msg))
 		return m, m.ReadFromPort(m.ctx)
 
 	case spinner.TickMsg:
@@ -234,31 +236,93 @@ func reconnectToPort(selectedPort string, selectedMode *serial.Mode) tea.Cmd {
 	}
 }
 
-// Returns a Tea command to scan for a new receive message on the serial port.
+// rxBuffer decouples reading the serial port from the bubbletea event loop.
+// A single goroutine (see startReader) owns the bufio.Scanner and appends every
+// received line to the queue. This keeps the port drained even while the TUI is
+// suspended (e.g. external editor) and guarantees that the scanner is never used
+// by more than one goroutine, also across bubbletea program restarts.
+type rxBuffer struct {
+	mu     sync.Mutex
+	lines  []string
+	signal chan struct{} // closed and replaced on every state change (broadcast)
+	done   bool
+	err    error
+}
+
+// startReader starts the reader goroutine for the given port and returns the
+// buffer it feeds. The goroutine ends when the port returns an error or EOF.
+func startReader(port io.Reader) *rxBuffer {
+	rx := &rxBuffer{signal: make(chan struct{})}
+
+	go func() {
+		scn := bufio.NewScanner(port)
+		for scn.Scan() {
+			rx.mu.Lock()
+			rx.lines = append(rx.lines, scn.Text())
+			rx.broadcastLocked()
+			rx.mu.Unlock()
+		}
+		rx.mu.Lock()
+		rx.done = true
+		rx.err = scn.Err()
+		rx.broadcastLocked()
+		rx.mu.Unlock()
+	}()
+
+	return rx
+}
+
+func (rx *rxBuffer) broadcastLocked() {
+	close(rx.signal)
+	rx.signal = make(chan struct{})
+}
+
+// ack removes the oldest line from the queue once it has been delivered to the
+// event loop. Lines are only peeked by ReadFromPort and removed here, so a line
+// handed to an already terminated bubbletea program (app restart after closing
+// the editor) is not lost but delivered again by the next program.
+func (rx *rxBuffer) ack(line string) {
+	rx.mu.Lock()
+	defer rx.mu.Unlock()
+	if len(rx.lines) > 0 && rx.lines[0] == line {
+		rx.lines = rx.lines[1:]
+	}
+}
+
+// Returns a Tea command that waits for the next received line on the serial port.
 // The tea command returns the received message or error, if occured.
 func (m Model) ReadFromPort(ctx context.Context) tea.Cmd {
-	scn := m.scanner
+	rx := m.rx
 
 	return func() tea.Msg {
-		for scn.Scan() {
-			line := scn.Text()
-			return events.SerialRxMsgReceived(line)
-		}
-
-		// Check if we manually canceled the context (Manual Disconnect)
-		select {
-		case <-ctx.Done():
-			return events.InfoMsg("Port closed manually")
-		default:
-			// Context is still active, proceed to check actual errors
-		}
-
-		if err := m.scanner.Err(); err != nil {
-			if err != io.EOF && err != context.Canceled {
-				return events.ErrMsg(err)
+		for {
+			rx.mu.Lock()
+			if len(rx.lines) > 0 {
+				line := rx.lines[0]
+				rx.mu.Unlock()
+				return events.SerialRxMsgReceived(line)
 			}
+			if rx.done {
+				err := rx.err
+				rx.mu.Unlock()
+
+				// Check if we manually canceled the context (Manual Disconnect)
+				select {
+				case <-ctx.Done():
+					return events.InfoMsg("Port closed manually")
+				default:
+					// Context is still active, proceed to check actual errors
+				}
+
+				if err != nil && err != io.EOF && err != context.Canceled {
+					return events.ErrMsg(err)
+				}
+				return nil
+			}
+			signal := rx.signal
+			rx.mu.Unlock()
+			<-signal
 		}
-		return nil
 	}
 }
 
@@ -289,7 +353,7 @@ func (m *Model) handlePortReconnected(port Port) tea.Cmd {
 	log.Println("Port reconnected")
 	m.status = connected
 	*m.port = port
-	m.scanner = bufio.NewScanner(*m.port)
+	m.rx = startReader(*m.port)
 
 	if m.cancel != nil {
 		m.cancel()
