@@ -23,6 +23,8 @@ type KeyMap struct {
 
 	// Actions Group
 	ToggleHistKey    key.Binding `group:"Actions"`
+	HistTallerKey    key.Binding `group:"Actions"`
+	HistShorterKey   key.Binding `group:"Actions"`
 	OpenEditorKey    key.Binding `group:"Actions"`
 	ClearLogKey      key.Binding `group:"Actions"`
 	DeleteCmdKey     key.Binding `group:"Actions"`
@@ -130,6 +132,14 @@ var Default = KeyMap{
 	ToggleHistKey: key.NewBinding(
 		key.WithKeys("ctrl+r"),
 		key.WithHelp("ctrl+r", "commads"),
+	),
+	HistTallerKey: key.NewBinding(
+		key.WithKeys("alt+up"),
+		key.WithHelp("alt+↑", "enlarge commands"),
+	),
+	HistShorterKey: key.NewBinding(
+		key.WithKeys("alt+down"),
+		key.WithHelp("alt+↓", "shrink commands"),
 	),
 	OpenEditorKey: key.NewBinding(
 		key.WithKeys("ctrl+e"),

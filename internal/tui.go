@@ -29,6 +29,8 @@ type model struct {
 	session    session.Model
 	help       help.Model
 	showCmdLog bool
+	histMode   string // HistModePopup or HistModePanel
+	histHeight Size   // configured cmd history height
 	showHelp   bool
 	restartApp bool
 	width      int
@@ -37,6 +39,7 @@ type model struct {
 
 func initialModel(port *io.ReadWriteCloser, showTimestamp bool, cmdHist []string,
 	selectedPort string, selectedMode *serial.Mode, serialLog *log.Logger, showEscapes bool,
+	settings Settings,
 ) model {
 	input := input.New()
 	cmdhist := cmdhist.New(cmdHist)
@@ -53,7 +56,9 @@ func initialModel(port *io.ReadWriteCloser, showTimestamp bool, cmdHist []string
 		footer:     footer,
 		session:    session,
 		help:       help,
-		showCmdLog: false,
+		showCmdLog: settings.CmdHist.Mode == HistModePanel, // panel starts open
+		histMode:   settings.CmdHist.Mode,
+		histHeight: settings.CmdHist.Height,
 		showHelp:   false,
 		width:      0,
 		height:     0,
@@ -74,8 +79,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// When the cmd-history popup is open, Enter "selects" the highlighted
 	// command into the input and dismisses the popup. We must intercept it
 	// before the input model sees it, otherwise input would treat Enter as
-	// Send and fire the command.
-	if m.showCmdLog {
+	// Send and fire the command. In panel mode Enter sends as usual.
+	if m.isPopupOpen() {
 		if keyMsg, ok := msg.(tea.KeyMsg); ok && key.Matches(keyMsg, keymap.Default.SendKey) {
 			// Read the selection before updateLayout: it triggers
 			// cmdhist.SetSize -> ResetVp, which resets the selection
@@ -173,8 +178,17 @@ func (m *model) handleKeys(keyMsg tea.KeyMsg) tea.Cmd {
 
 	case key.Matches(keyMsg, keymap.Default.CloseKey, keymap.Default.ResetKey):
 		m.showHelp = false
-		m.showCmdLog = false
+		// The panel stays open, only the popup is dismissed.
+		if m.histMode == HistModePopup {
+			m.showCmdLog = false
+		}
 		m.updateLayout()
+
+	case key.Matches(keyMsg, keymap.Default.HistTallerKey):
+		m.resizeCmdHist(1)
+
+	case key.Matches(keyMsg, keymap.Default.HistShorterKey):
+		m.resizeCmdHist(-1)
 	}
 
 	return nil
@@ -184,14 +198,7 @@ func (m *model) updateLayout() {
 	footerHeight := m.footer.GetHeight()
 	inputHeight := m.input.GetHeight()
 
-	cmdLogHeight := 10
-	maxCmdLogHeight := m.height / 3
-	if maxCmdLogHeight < cmdLogHeight {
-		cmdLogHeight = maxCmdLogHeight
-	}
-	if cmdLogHeight < 3 {
-		cmdLogHeight = 3
-	}
+	cmdLogHeight := m.cmdLogHeight()
 
 	var msgLogHeight int
 	if m.showCmdLog {
@@ -205,14 +212,45 @@ func (m *model) updateLayout() {
 	m.msglog.SetSize(m.width, msgLogHeight)
 	// Keep cmdhist's popup state in sync before SetSize: SetSize calls
 	// ResetVp, whose resting selection depends on whether the popup is open.
-	m.cmdhist.SetPopupOpen(m.showCmdLog)
+	m.cmdhist.SetPopupOpen(m.isPopupOpen())
 	m.cmdhist.SetSize(m.width, cmdLogHeight)
+}
+
+// isPopupOpen reports whether the cmd history is open in popup mode. Only
+// then up/down move the highlight and enter selects it. In panel mode the
+// history is navigated shell-style like a closed popup.
+func (m model) isPopupOpen() bool {
+	return m.showCmdLog && m.histMode == HistModePopup
+}
+
+const (
+	minCmdLogHeight = 3
+	minMsgLogHeight = 3
+)
+
+// cmdLogHeight returns the configured cmd history height, clamped so that
+// the message log keeps a minimum height.
+func (m model) cmdLogHeight() int {
+	maxHeight := m.height - m.input.GetHeight() - m.footer.GetHeight() - minMsgLogHeight
+	return min(max(m.histHeight.Resolve(m.height), minCmdLogHeight), max(maxHeight, minCmdLogHeight))
+}
+
+// resizeCmdHist changes the cmd history height by delta rows. The height
+// becomes absolute (a percentage is converted) and is not persisted.
+func (m *model) resizeCmdHist(delta int) {
+	if !m.showCmdLog {
+		return
+	}
+	m.histHeight = Size{Value: max(m.cmdLogHeight()+delta, minCmdLogHeight)}
+	// clamp stored value to what can actually be displayed
+	m.histHeight.Value = m.cmdLogHeight()
+	m.updateLayout()
 }
 
 func RunTui(port *io.ReadWriteCloser, mode serial.Mode, flags Flags, config Config, serialLog *log.Logger) {
 	zone.NewGlobal()
 
-	m := initialModel(port, flags.Timestamp, config.CmdHistoryLines, flags.Port, &mode, serialLog, flags.ShowEscapes)
+	m := initialModel(port, flags.Timestamp, config.CmdHistoryLines, flags.Port, &mode, serialLog, flags.ShowEscapes, config.Settings)
 
 	for {
 		p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())

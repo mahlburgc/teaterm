@@ -3,11 +3,11 @@ module github.com/mahlburgc/teaterm
 go 1.25.4
 
 require (
+	github.com/BurntSushi/toml v1.4.0
 	github.com/acarl005/stripansi v0.0.0-20180116102854-5a71ef0e047d
 	github.com/charmbracelet/bubbles v0.21.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
-	github.com/icza/gox v0.2.2
 	github.com/lrstanley/bubblezone v1.0.0
 	github.com/rmhubbert/bubbletea-overlay v0.6.3
 	github.com/sahilm/fuzzy v0.1.1

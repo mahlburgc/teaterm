@@ -44,6 +44,39 @@ In a second shell, use tail to see the debug messages.
 tail -f <repo-path>/debug.log
 ```
 
+## Configuration
+
+Teaterm reads its settings on startup from `~/.config/teaterm/teaterm.toml` (next to the command history `cmdhistroy.conf`).
+The file is optional and is not created automatically. All settings are optional, unset values use the default.
+If the file contains an invalid value or an unknown setting, teaterm prints an error and exits.
+
+Example with all available settings (values shown are the defaults):
+
+```toml
+[cmdhist]
+# How the command history behaves when opened with ctrl+r.
+#   "popup": ctrl+r opens the history, up/down move the selection,
+#            enter copies the selected command into the input and closes the history.
+#   "panel": the history is open on start, ctrl+r shows/hides it, it stays open while working,
+#            enter sends the input, up/down recall commands into the input (shell-style)
+#            and typing filters the history.
+mode = "popup"
+
+# Height of the command history.
+# Either a number of rows (e.g. 15 or "15") or a percentage of the terminal height (e.g. "30%").
+# If not set: 10 rows, but at most a third of the terminal height.
+# The message log always keeps a minimum height of 3 rows.
+# height = 10
+```
+
+| Setting          | Allowed values                | Default                         |
+| ---------------- | ----------------------------- | ------------------------------- |
+| `cmdhist.mode`   | `"popup"`, `"panel"`          | `"popup"`                       |
+| `cmdhist.height` | rows (`15`, `"15"`), `"1%"`..`"100%"` | 10 rows, max 1/3 of terminal |
+
+While the command history is open, its height can be changed during the session with `alt+↑` / `alt+↓`.
+These changes are not stored.
+
 ## External Editor Support
 
 During a teaterm session you can open an external editor of your choice with the current message log by pressing `ctrl+e`. Make sure your `EDITOR` variable is exported in your shell config file. Otherwise `vim` will be called.
@@ -78,6 +111,7 @@ source ~/.zshrc
 - ctrl + page up / down for faster scrolling
 - use ctrl+q for quit
 - on ascii view, ignore non ascii characters
+- command history as popup or persistent panel with configurable height (see [Configuration](#configuration))
 
 ## Planned features
 

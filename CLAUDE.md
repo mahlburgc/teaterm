@@ -50,5 +50,6 @@ Order matters in the root `Update`: e.g. Enter is intercepted before the input s
 - **Serial port** is passed around as `*io.ReadWriteCloser` (pointer, because reconnects replace the underlying port object; the deferred close in `main` must close the *current* port). The mock port (`internal/mockport.go`) implements the same interface.
 - **App restart loop**: `RunTui` runs the Bubble Tea program in a loop; returning from an external editor sets `restartApp` and quits, then a fresh program is started (workaround for a bubbletea v1 mouse-restore bug).
 - **Layout** is computed manually in `updateLayout()` (root model) by subtracting component heights from the window height — adjust there when adding/resizing components.
-- **Persistence**: command history is the only persisted config, stored at `~/.config/teaterm/cmdhistroy.conf` (sic), capped at 500 entries, written on quit via `StoreConfig`.
+- **Persistence**: command history is stored at `~/.config/teaterm/cmdhistroy.conf` (sic), capped at 500 entries, written on quit via `StoreConfig`.
+- **Settings**: user settings are read once on startup from `~/.config/teaterm/teaterm.toml` (`internal/settings.go`, `LoadSettings`), never written. Unknown keys and invalid values abort startup. New settings must be added to `settingsFile`, `Settings`/`DefaultSettings` and documented in the "Configuration" section of `readme.md`.
 - **Version** (`internal/version.go`) must stay a `var` with a string-literal initializer so `-ldflags -X` can override it; otherwise it resolves from build info.

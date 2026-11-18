@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -8,31 +9,46 @@ import (
 
 type Config struct {
 	CmdHistoryLines []string
+	Settings        Settings
 }
 
 // Return the path to the config file.
 // If the path does not exist, it will be created.
 func getConfigFilePath() string {
+	cmdHistFileName := "cmdhistroy.conf"
+	return configDir() + cmdHistFileName
+}
+
+// Return the teaterm config directory (with trailing slash).
+// If the directory does not exist, it will be created.
+func configDir() string {
 	homedir, err := os.UserHomeDir()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	cmdHistBasePath := homedir + "/.config/teaterm/"
-	cmdHistFileName := "cmdhistroy.conf"
+	configBasePath := homedir + "/.config/teaterm/"
 
-	err = os.MkdirAll(cmdHistBasePath, os.ModePerm)
+	err = os.MkdirAll(configBasePath, os.ModePerm)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	return cmdHistBasePath + cmdHistFileName
+	return configBasePath
 }
 
-// Setup / load the teaterm configuration.
-// Currently config only contains the command history.
+// Setup / load the teaterm configuration: the command history and the
+// user settings (teaterm.toml). Exits on an invalid settings file.
 func GetConfig() Config {
 	var config Config
+
+	settings, err := LoadSettings()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "teaterm: %v\n", err)
+		os.Exit(1)
+	}
+	config.Settings = settings
+
 	filepath := getConfigFilePath()
 
 	cmdHist, err := os.ReadFile(filepath)

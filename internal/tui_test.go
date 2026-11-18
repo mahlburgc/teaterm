@@ -54,7 +54,7 @@ func TestCmdHistEnterSelectsHighlighted(t *testing.T) {
 	var port io.ReadWriteCloser
 	port, mode := OpenFakePort()
 	defer port.Close()
-	m := initialModel(&port, false, []string{"alpha", "bravo", "charlie"}, "mock", &mode, nil, false)
+	m := initialModel(&port, false, []string{"alpha", "bravo", "charlie"}, "mock", &mode, nil, false, DefaultSettings())
 
 	m = processMsg(m, tea.WindowSizeMsg{Width: 80, Height: 30}, nil, 0)
 
@@ -107,7 +107,7 @@ func TestAutoCompleteUpdatesHistFilter(t *testing.T) {
 	port, mode := OpenFakePort()
 	defer port.Close()
 	// "a" fuzzy-matches both; the completed "ab" only matches itself.
-	m := initialModel(&port, false, []string{"axc", "ab"}, "mock", &mode, nil, false)
+	m := initialModel(&port, false, []string{"axc", "ab"}, "mock", &mode, nil, false, DefaultSettings())
 
 	m = processMsg(m, tea.WindowSizeMsg{Width: 80, Height: 30}, nil, 0)
 	m = processMsg(m, tea.KeyMsg{Type: tea.KeyCtrlR}, nil, 0)
@@ -138,7 +138,7 @@ func TestClosedPopupRecall(t *testing.T) {
 	var port io.ReadWriteCloser
 	port, mode := OpenFakePort()
 	defer port.Close()
-	m := initialModel(&port, false, []string{"alpha", "bravo", "charlie"}, "mock", &mode, nil, false)
+	m := initialModel(&port, false, []string{"alpha", "bravo", "charlie"}, "mock", &mode, nil, false, DefaultSettings())
 
 	m = processMsg(m, tea.WindowSizeMsg{Width: 80, Height: 30}, nil, 0)
 	if m.showCmdLog {
@@ -160,5 +160,110 @@ func TestClosedPopupRecall(t *testing.T) {
 	want := []string{"charlie", "bravo", "charlie", ""}
 	if strings.Join(log, "|") != strings.Join(want, "|") {
 		t.Errorf("recall mirrored %q into input, want %q", log, want)
+	}
+}
+
+func panelSettings() Settings {
+	s := DefaultSettings()
+	s.CmdHist.Mode = HistModePanel
+	return s
+}
+
+// TestPanelModeEnterSends verifies the persistent panel mode: the history
+// stays open, Enter sends the input instead of selecting a command, and
+// Esc does not hide the panel.
+func TestPanelModeEnterSends(t *testing.T) {
+	zone.NewGlobal()
+	var port io.ReadWriteCloser
+	port, mode := OpenFakePort()
+	defer port.Close()
+	m := initialModel(&port, false, []string{"alpha", "bravo"}, "mock", &mode, nil, false, panelSettings())
+
+	m = processMsg(m, tea.WindowSizeMsg{Width: 80, Height: 30}, nil, 0)
+	if !m.showCmdLog {
+		t.Fatal("panel not shown on start")
+	}
+	m = processMsg(m, tea.KeyMsg{Type: tea.KeyCtrlR}, nil, 0)
+	if m.showCmdLog {
+		t.Fatal("panel not hidden after ctrl+r")
+	}
+	m = processMsg(m, tea.KeyMsg{Type: tea.KeyCtrlR}, nil, 0)
+	if !m.showCmdLog {
+		t.Fatal("panel not shown after second ctrl+r")
+	}
+
+	// Up recalls shell-style into the input, like a closed popup.
+	var recalled []string
+	m = processMsg(m, tea.KeyMsg{Type: tea.KeyUp}, &recalled, 0)
+	if len(recalled) != 1 || recalled[0] != "bravo" {
+		t.Fatalf("up recalled %q, want [bravo]", recalled)
+	}
+
+	m = processMsg(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("new")}, nil, 0)
+	m = processMsg(m, tea.KeyMsg{Type: tea.KeyEnter}, nil, 0)
+	if !m.showCmdLog {
+		t.Error("panel closed after enter")
+	}
+	hist := m.cmdhist.GetCmdHist()
+	if last := hist[len(hist)-1]; last != "bravonew" {
+		t.Errorf("last sent command = %q, want %q", last, "bravonew")
+	}
+
+	m = processMsg(m, tea.KeyMsg{Type: tea.KeyEsc}, nil, 0)
+	if !m.showCmdLog {
+		t.Error("esc must not hide the panel")
+	}
+
+	m = processMsg(m, tea.KeyMsg{Type: tea.KeyCtrlR}, nil, 0)
+	if m.showCmdLog {
+		t.Error("ctrl+r must hide the panel")
+	}
+}
+
+// TestCmdHistResize verifies the configured height and alt+up/down resizing,
+// clamped so the message log keeps its minimum height.
+func TestCmdHistResize(t *testing.T) {
+	zone.NewGlobal()
+	var port io.ReadWriteCloser
+	port, mode := OpenFakePort()
+	defer port.Close()
+	s := DefaultSettings()
+	s.CmdHist.Height = Size{Value: 50, Percent: true}
+	m := initialModel(&port, false, nil, "mock", &mode, nil, false, s)
+
+	m = processMsg(m, tea.WindowSizeMsg{Width: 80, Height: 30}, nil, 0)
+	m = processMsg(m, tea.KeyMsg{Type: tea.KeyCtrlR}, nil, 0)
+	if got := m.cmdLogHeight(); got != 15 {
+		t.Fatalf("50%% of 30 rows: got %d, want 15", got)
+	}
+
+	m = processMsg(m, tea.KeyMsg{Type: tea.KeyUp, Alt: true}, nil, 0)
+	if got := m.cmdLogHeight(); got != 16 {
+		t.Errorf("after alt+up: got %d, want 16", got)
+	}
+	m = processMsg(m, tea.KeyMsg{Type: tea.KeyDown, Alt: true}, nil, 0)
+	m = processMsg(m, tea.KeyMsg{Type: tea.KeyDown, Alt: true}, nil, 0)
+	if got := m.cmdLogHeight(); got != 14 {
+		t.Errorf("after 2x alt+down: got %d, want 14", got)
+	}
+
+	for range 50 {
+		m = processMsg(m, tea.KeyMsg{Type: tea.KeyDown, Alt: true}, nil, 0)
+	}
+	if got := m.cmdLogHeight(); got != minCmdLogHeight {
+		t.Errorf("shrunk to min: got %d, want %d", got, minCmdLogHeight)
+	}
+
+	for range 50 {
+		m = processMsg(m, tea.KeyMsg{Type: tea.KeyUp, Alt: true}, nil, 0)
+	}
+	maxH := 30 - m.input.GetHeight() - m.footer.GetHeight() - minMsgLogHeight
+	if got := m.cmdLogHeight(); got != maxH {
+		t.Errorf("grown to max: got %d, want %d", got, maxH)
+	}
+	// one alt+down from max must shrink immediately (no hidden overshoot)
+	m = processMsg(m, tea.KeyMsg{Type: tea.KeyDown, Alt: true}, nil, 0)
+	if got := m.cmdLogHeight(); got != maxH-1 {
+		t.Errorf("alt+down from max: got %d, want %d", got, maxH-1)
 	}
 }
