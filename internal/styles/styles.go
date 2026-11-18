@@ -93,7 +93,7 @@ func AddBorder(vp viewport.Model, title string, footer string, ownFooterStyle bo
 	if title == "" {
 		vpTitle = ""
 	} else {
-		vpTitle = borderStyle.Render(border.Top + border.MiddleRight + " " + title + " " + border.MiddleLeft)
+		vpTitle = renderTitle(title)
 		// Remove title if width is too low
 		if lipgloss.Width(vpTitle) > vp.Width {
 			vpTitle = ""
@@ -158,7 +158,7 @@ func addSeparator(vp viewport.Model, title string, footer string, ownFooterStyle
 
 	var lineTitle string
 	if title != "" {
-		lineTitle = borderStyle.Render(border.Top + border.MiddleRight + " " + title + " " + border.MiddleLeft)
+		lineTitle = renderTitle(title)
 	}
 
 	var lineFooter string
@@ -184,4 +184,17 @@ func addSeparator(vp viewport.Model, title string, footer string, ownFooterStyle
 	line := lineTitle + SeparatorLine(fill) + lineFooter
 
 	return lipgloss.JoinVertical(lipgloss.Left, line, vp.View())
+}
+
+// renderTitle renders a border title piece: ─┤ title ├
+// A plain title is drawn in the border color, a pre-styled title (containing
+// escape sequences) keeps its own colors.
+func renderTitle(title string) string {
+	border := BorderStyle.GetBorderStyle()
+	borderStyle := lipgloss.NewStyle().Foreground(AdaptiveBorderColor)
+	if !strings.Contains(title, "\x1b") {
+		title = borderStyle.Render(title)
+	}
+	return borderStyle.Render(border.Top+border.MiddleRight+" ") + title +
+		borderStyle.Render(" "+border.MiddleLeft)
 }

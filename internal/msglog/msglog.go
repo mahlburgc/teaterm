@@ -28,7 +28,9 @@ type Model struct {
 	errStyle      lipgloss.Style
 	infoStyle     lipgloss.Style
 	log           []string
+	kinds         []int // message type (rxMsg, txMsg, ...) of every log line
 	logFiltered   []string
+	kindsFiltered []int // message type of every logFiltered line
 	showTimestamp bool
 	serialLog     *log.Logger
 	txPrefix      string
@@ -91,7 +93,9 @@ func New(showTimestamp bool, showEscapes bool, sendStyle lipgloss.Style,
 	m.needsUpdate = false
 
 	m.log = append(m.log, m.startMsg())
+	m.kinds = append(m.kinds, infoMsg)
 	m.logFiltered = append(m.logFiltered, m.startMsg())
+	m.kindsFiltered = append(m.kindsFiltered, infoMsg)
 
 	m.sendStyle = sendStyle
 	m.errStyle = errStyle
@@ -183,7 +187,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			if m.Vp.Height > 0 {
 				m.clearSelection()
 				m.log = nil /* reset serial message log */
+				m.kinds = nil
 				m.logFiltered = nil
+				m.kindsFiltered = nil
 				m.msgCnt = 0
 				m.Vp.SetContent("")
 				m.scrollToBottom()
@@ -221,7 +227,23 @@ func (m Model) View() string {
 	if m.notice != "" {
 		footer = styles.PercentRenderStyle.Render(m.notice) + " " + footer
 	}
-	return zone.Mark(msgLogZone, styles.AddBorder(m.Vp, "Messages", footer, true))
+	return zone.Mark(msgLogZone, styles.AddBorder(m.Vp, m.title(), footer, true))
+}
+
+// maxTitleFilterLen limits the filter shown in the title.
+const maxTitleFilterLen = 20
+
+// title returns the message log title. An active filter is shown in it.
+func (m Model) title() string {
+	if m.filterString == "" {
+		return "Messages"
+	}
+	borderStyle := lipgloss.NewStyle().Foreground(styles.AdaptiveBorderColor)
+	filter := m.filterString
+	if r := []rune(filter); len(r) > maxTitleFilterLen {
+		filter = string(r[:maxTitleFilterLen-1]) + "…"
+	}
+	return borderStyle.Render("Messages · ") + styles.PercentRenderStyle.Render("filter: "+filter)
 }
 
 func (m *Model) SetSize(width, height int) {
@@ -353,18 +375,23 @@ func (m *Model) addMsg(msg string, msgType int) {
 	}
 
 	m.log = append(m.log, renderedString)
-	matchFound := m.appendToFilteredLog(renderedString, m.filterString)
+	m.kinds = append(m.kinds, msgType)
+	matchFound := m.appendToFilteredLog(renderedString, m.filterString, msgType)
 
 	// message histrory limit, remove oldest if exceed
 	if len(m.log) > m.logLimit {
 		m.log = m.log[1:]
 		m.log[0] = m.startMsg()
+		m.kinds = m.kinds[1:]
+		m.kinds[0] = infoMsg
 	}
 
 	// filtered message histrory limit, remove oldest if exceed
 	if len(m.logFiltered) > m.logLimit {
 		m.logFiltered = m.logFiltered[1:]
 		m.logFiltered[0] = m.startMsg()
+		m.kindsFiltered = m.kindsFiltered[1:]
+		m.kindsFiltered[0] = infoMsg
 		m.shiftSelection(1)
 	}
 
@@ -514,8 +541,13 @@ func (m *Model) UpdateVp() {
 			combinedPattern := "(?i)(" + strings.Join(escapedWords, "|") + ")"
 			re := regexp.MustCompile(combinedPattern)
 
-			// 4. Perform the replacement in ONE pass per line
+			// 4. Perform the replacement in ONE pass per line. Only received
+			// lines are highlighted, sent and info/error lines keep their
+			// normal colors.
 			for i, line := range lines {
+				if m.filteredKindOf(startIndex+i) != rxMsg {
+					continue
+				}
 				line = stripansi.Strip(line)
 				lines[i] = re.ReplaceAllStringFunc(line, func(s string) string {
 					return styles.SearchHighlightStyle.Render(s)
@@ -620,11 +652,14 @@ func openEditorCmd(content []string) tea.Cmd {
 // FILTER METHODS
 
 // FilterSingleMsg is the easy-to-use method for checking a single line against a query.
-func (m *Model) appendToFilteredLog(line string, query string) bool {
+// Only received lines are filtered, sent lines and info/error lines are
+// always shown.
+func (m *Model) appendToFilteredLog(line string, query string, msgType int) bool {
 	var matchFound bool
 
-	if query == "" {
+	if query == "" || msgType != rxMsg {
 		m.logFiltered = append(m.logFiltered, line)
+		m.kindsFiltered = append(m.kindsFiltered, msgType)
 		matchFound = true
 		m.needsUpdate = true
 	} else {
@@ -632,6 +667,7 @@ func (m *Model) appendToFilteredLog(line string, query string) bool {
 
 		if msg, matches := m.filterMsg(line, searchWords); matches {
 			m.logFiltered = append(m.logFiltered, msg)
+			m.kindsFiltered = append(m.kindsFiltered, msgType)
 			matchFound = true
 			m.needsUpdate = true
 		}
@@ -640,24 +676,47 @@ func (m *Model) appendToFilteredLog(line string, query string) bool {
 	return matchFound
 }
 
+// kindOf returns the message type of log line i. The start message counts
+// as info message.
+func (m *Model) kindOf(i int) int {
+	if i == 0 || i >= len(m.kinds) {
+		return infoMsg
+	}
+	return m.kinds[i]
+}
+
+// filteredKindOf returns the message type of logFiltered line i.
+func (m *Model) filteredKindOf(i int) int {
+	if i < 0 || i >= len(m.kindsFiltered) {
+		return infoMsg
+	}
+	return m.kindsFiltered[i]
+}
+
 // filterLog processes the entire log. We do not highlight any matches here to keep the filter
 // logic fast.
 func (m *Model) filterLog(query string) {
 	if query == "" {
 		m.logFiltered = m.log
+		m.kindsFiltered = m.kinds
 	} else {
 		searchWords := strings.Fields(strings.ToLower(query))
 
 		filtered := make([]string, 0)
+		kinds := make([]int, 0)
 		for i, line := range m.log {
-			if i == 0 {
-				// first element is start message and should always be included and not be filtered
+			kind := m.kindOf(i)
+			if kind != rxMsg {
+				// start message, sent lines and info/error lines are never filtered
 				filtered = append(filtered, line)
+				kinds = append(kinds, kind)
 			} else if msg, matches := m.filterMsg(line, searchWords); matches {
 				filtered = append(filtered, msg)
+				kinds = append(kinds, kind)
 			}
 		}
 		m.logFiltered = filtered
+		m.kindsFiltered = kinds
 	}
 	m.needsUpdate = true
 }

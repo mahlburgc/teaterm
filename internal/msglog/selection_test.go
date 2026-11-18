@@ -190,3 +190,39 @@ func TestHorizontalOffsetSelection(t *testing.T) {
 		t.Errorf("clamped xOffset = %d, want %d", m.xOffset, want)
 	}
 }
+
+// While filtering, sent and info lines are always shown in their normal
+// colors, received lines are filtered and highlighted.
+func TestFilterKeepsSentLines(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.ANSI256)
+	t.Cleanup(func() { lipgloss.SetColorProfile(termenv.Ascii) })
+
+	sendStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("201"))
+	m := New(false, false, sendStyle, lipgloss.NewStyle(), lipgloss.NewStyle(), nil, 100)
+	m.SetSize(40+2, 6+2)
+	m, _ = m.Update(events.SerialRxMsgReceived("temp=21"))
+	m, _ = m.Update(events.SerialRxMsgReceived("hum=40"))
+	m, _ = m.Update(events.SendMsg{Data: "get hum"})
+
+	// existing log is filtered, new lines are filtered on arrival
+	m, _ = m.Update(events.MsgLogFilterStringMsg("temp"))
+	m, _ = m.Update(events.SendMsg{Data: "get voltage"})
+	m, _ = m.Update(events.InfoMsg("port reconnected"))
+	m, _ = m.Update(events.SerialRxMsgReceived("hum=41"))
+
+	view := m.Vp.View()
+	plain := ansi.Strip(view)
+	for _, want := range []string{"temp=21", "get hum", "get voltage", "INFO: port reconnected"} {
+		if !strings.Contains(plain, want) {
+			t.Errorf("%q missing in filtered view:\n%s", want, plain)
+		}
+	}
+	for _, hidden := range []string{"hum=40", "hum=41"} {
+		if strings.Contains(plain, hidden) {
+			t.Errorf("%q shown in filtered view", hidden)
+		}
+	}
+	if !strings.Contains(view, sendStyle.Render("get voltage")) {
+		t.Error("sent line lost its color while filtering")
+	}
+}

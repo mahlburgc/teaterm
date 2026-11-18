@@ -13,11 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - command history mode `panel`: history open on start and stays open, enter sends, up/down recall commands
 - configurable command history height (rows or percentage)
 - resize command history during session with `alt+up` / `alt+down`
+- message log filter can be kept active while sending commands (`enter` / `ctrl+f` keeps it, `ctrl+c` or `esc` in filter mode clears it), active filter shown in the message log title
 - select text in the message log with the mouse, copied to clipboard on release
 - minimal border layout (`layout.borders = "minimal"`): sections only separated by a single line
 
 ### Changed
 
+- while filtering, sent commands and INFO / ERROR lines are always shown in their normal colors, only received lines are filtered
+- filter is no longer cleared on disconnect / reconnect
 - fixed broken / lost rx messages after closing the external editor
 
 ## [0.3.2] - 2026-06-08

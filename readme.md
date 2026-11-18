@@ -85,6 +85,19 @@ borders = "full"
 While the command history is open, its height can be changed during the session with `alt+↑` / `alt+↓`.
 These changes are not stored.
 
+## Filter the Message Log
+
+Press `ctrl+f` to switch the input into filter mode (`Filter: ` prompt). While typing, the message log only shows received lines that contain all entered words (case insensitive).
+
+- `enter` or `ctrl+f`: keep the filter and switch back to the normal input. You can send commands while the filter stays active.
+- `ctrl+f` again: edit the active filter (the input is pre-filled with it).
+- `esc` in filter mode: clear the filter. In normal input mode `esc` only clears the input.
+- `ctrl+c`: clear the input and the filter (in both modes).
+
+While a filter is active, it is shown in the message log title (`Messages · filter: ...`).
+Sent commands and teaterm's own INFO / ERROR lines are always shown in their normal colors, only received lines are filtered.
+The filter stays active over disconnect / reconnect.
+
 ## Copy Text from the Message Log
 
 Select text in the message log by pressing the left mouse button and dragging over it.
@@ -125,6 +138,7 @@ source ~/.zshrc
 - manual disconnect/reconnect to port from TUI
 - auto completion suggestions for send commands based on command history
 - fuzzy finder for command history while typing
+- filter the message log and keep the filter active while sending commands
 - only auto scroll on new messages if we are at lowest line
 - indicate that we are on lowest line
 - scroll indicator for message log

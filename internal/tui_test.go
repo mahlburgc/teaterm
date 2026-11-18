@@ -366,3 +366,102 @@ func TestMouseSelectionCoordinates(t *testing.T) {
 		})
 	}
 }
+
+// TestFilterStaysActive verifies that a message log filter can be kept while
+// sending commands: Enter / ctrl+f leave filter mode and keep the filter,
+// Esc in filter mode clears it, Esc in input mode does not touch it.
+func TestFilterStaysActive(t *testing.T) {
+	zone.NewGlobal()
+	var port io.ReadWriteCloser
+	port, mode := OpenFakePort()
+	defer port.Close()
+	m := initialModel(&port, false, nil, "mock", &mode, nil, false, DefaultSettings())
+	m = processMsg(m, tea.WindowSizeMsg{Width: 80, Height: 30}, nil, 0)
+
+	rx := func(line string) {
+		m.msglog, _ = m.msglog.Update(events.SerialRxMsgReceived(line))
+	}
+	key := func(k tea.KeyMsg) { m = processMsg(m, k, nil, 0) }
+	typeText := func(s string) { key(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}) }
+	logView := func() string { return ansi.Strip(m.msglog.View()) }
+	inputView := func() string { return ansi.Strip(m.input.View()) }
+
+	rx("temp=21")
+	rx("hum=40")
+
+	// Filter and keep it with Enter.
+	key(tea.KeyMsg{Type: tea.KeyCtrlF})
+	typeText("temp")
+	key(tea.KeyMsg{Type: tea.KeyEnter})
+	if !strings.Contains(logView(), "filter: temp") {
+		t.Fatalf("filter not shown in title after enter:\n%s", logView())
+	}
+	if strings.Contains(logView(), "hum=40") {
+		t.Error("filter not applied: hum=40 visible")
+	}
+	if !strings.Contains(inputView(), "> ") || strings.Contains(inputView(), "Filter:") {
+		t.Errorf("not back in input mode: %q", inputView())
+	}
+
+	// Send while filtered: sent lines are always shown, the filter stays.
+	typeText("xyz")
+	key(tea.KeyMsg{Type: tea.KeyEnter})
+	if !strings.Contains(logView(), "xyz") {
+		t.Error("sent line hidden by filter")
+	}
+	if !strings.Contains(logView(), "filter: temp") {
+		t.Error("filter lost after sending")
+	}
+
+	// New rx lines are still filtered.
+	rx("hum=41")
+	rx("temp=22")
+	if strings.Contains(logView(), "hum=41") || !strings.Contains(logView(), "temp=22") {
+		t.Errorf("rx lines not filtered:\n%s", logView())
+	}
+
+	// Esc in input mode only resets the input (ctrl+c would clear the filter).
+	typeText("abc")
+	key(tea.KeyMsg{Type: tea.KeyEsc})
+	if !strings.Contains(logView(), "filter: temp") {
+		t.Error("esc in input mode cleared the filter")
+	}
+
+	// Connection changes keep the filter.
+	for _, s := range []events.ConnectionStatus{events.Disconnected, events.Connecting, events.Connected} {
+		m = processMsg(m, events.ConnectionStatusMsg{Status: s}, nil, 0)
+	}
+	if !strings.Contains(logView(), "filter: temp") {
+		t.Error("reconnect cleared the filter")
+	}
+
+	// ctrl+f pre-fills the active filter, ctrl+f again keeps it.
+	key(tea.KeyMsg{Type: tea.KeyCtrlF})
+	if !strings.Contains(inputView(), "Filter: temp") {
+		t.Errorf("filter not pre-filled: %q", inputView())
+	}
+	key(tea.KeyMsg{Type: tea.KeyCtrlF})
+	if !strings.Contains(logView(), "filter: temp") {
+		t.Error("ctrl+f in filter mode cleared the filter")
+	}
+
+	// Esc in filter mode clears the filter.
+	key(tea.KeyMsg{Type: tea.KeyCtrlF})
+	key(tea.KeyMsg{Type: tea.KeyEsc})
+	if strings.Contains(logView(), "filter:") || !strings.Contains(logView(), "hum=41") {
+		t.Errorf("filter not cleared by esc:\n%s", logView())
+	}
+
+	// ctrl+c in input mode clears input and filter.
+	key(tea.KeyMsg{Type: tea.KeyCtrlF})
+	typeText("temp")
+	key(tea.KeyMsg{Type: tea.KeyEnter})
+	typeText("abc")
+	key(tea.KeyMsg{Type: tea.KeyCtrlC})
+	if strings.Contains(logView(), "filter:") {
+		t.Error("ctrl+c in input mode did not clear the filter")
+	}
+	if strings.Contains(inputView(), "abc") {
+		t.Error("ctrl+c did not clear the input")
+	}
+}

@@ -163,7 +163,7 @@ var Default = KeyMap{
 	),
 	ResetKey: key.NewBinding(
 		key.WithKeys("ctrl+c"),
-		key.WithHelp("ctrl+c", "reset input"),
+		key.WithHelp("ctrl+c", "reset input + filter"),
 	),
 	CloseKey: key.NewBinding(
 		key.WithKeys("esc"),
@@ -183,7 +183,7 @@ var Default = KeyMap{
 	),
 	FilterMsgLogKey: key.NewBinding(
 		key.WithKeys("ctrl+f"),
-		key.WithHelp("ctrl+f", "filter msg log"),
+		key.WithHelp("ctrl+f", "filter msg log (enter: keep)"),
 	),
 	DebugKey: key.NewBinding(
 		key.WithKeys("ctrl+p"),

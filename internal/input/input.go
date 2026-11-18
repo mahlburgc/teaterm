@@ -22,6 +22,7 @@ type Model struct {
 	inputSuggestion    string
 	width              int
 	isMsgLogFilterMode bool
+	filter             string // active message log filter, kept while in input mode
 }
 
 const (
@@ -115,7 +116,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			cmd = m.SetDisconnectet()
 
 		case events.Connected:
-			cmd = m.Reset()
+			cmd = m.resetInput()
 
 		case events.Connecting:
 			cmd = m.SetConnecting()
@@ -125,6 +126,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, keymap.Default.SendKey):
+			if m.isMsgLogFilterMode {
+				// keep the filter and go back to input mode
+				return m, m.leaveFilterMode(true)
+			}
 			if m.ta.Value() == "" {
 				return m, nil
 			} else if !m.isMsgLogFilterMode {
@@ -134,13 +139,19 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			}
 
 		case key.Matches(msg, keymap.Default.ResetKey):
+			// ctrl+c resets everything: input and filter
 			if m.ta.Focused() {
-				return m, m.Reset()
+				return m, m.leaveFilterMode(false)
 			}
 
 		case key.Matches(msg, keymap.Default.CloseKey):
 			if m.ta.Focused() {
-				return m, m.Reset()
+				if m.isMsgLogFilterMode {
+					// clear the filter and go back to input mode
+					return m, m.leaveFilterMode(false)
+				}
+				// in input mode esc only resets the input, the filter stays
+				return m, m.resetInput()
 			}
 
 		case key.Matches(msg, keymap.Default.ToggleHistKey):
@@ -158,7 +169,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				if !m.isMsgLogFilterMode {
 					return m, m.SetFiltering()
 				} else {
-					return m, m.Reset()
+					// keep the filter and go back to input mode
+					return m, m.leaveFilterMode(true)
 				}
 			}
 
@@ -183,7 +195,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 	case events.SendMsg:
 		m.inputSuggestion = ""
-		return m, m.Reset()
+		return m, m.resetInput()
 
 	case events.HistCmdSelected:
 		if !m.isMsgLogFilterMode {
@@ -191,7 +203,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				m.SetValue(string(msg))
 				return m, nil
 			} else {
-				return m, m.Reset()
+				return m, m.resetInput()
 			}
 		}
 
@@ -291,15 +303,13 @@ func (m *Model) SetValue(value string) {
 }
 
 func (m *Model) SetDisconnectet() tea.Cmd {
+	cmd := m.keepTypedFilter()
 	m.ta.Reset()
 	m.ta.Prompt = inputPromt
 	m.ta.Placeholder = "Disconnected"
 	m.ta.Blur()
 	m.inputSuggestion = ""
-	filterStringCmd := func() tea.Msg {
-		return events.MsgLogFilterStringMsg("")
-	}
-	return filterStringCmd
+	return cmd
 }
 
 func (m *Model) SetConnected() tea.Cmd {
@@ -313,28 +323,59 @@ func (m *Model) SetConnected() tea.Cmd {
 }
 
 func (m *Model) SetConnecting() tea.Cmd {
+	cmd := m.keepTypedFilter()
 	m.ta.Reset()
 	m.ta.Prompt = inputPromt
 	m.ta.Placeholder = "Connecting..."
 	m.ta.Blur()
 	m.inputSuggestion = ""
-	filterStringCmd := func() tea.Msg {
-		return events.MsgLogFilterStringMsg("")
-	}
-	return filterStringCmd
+	return cmd
 }
 
-func (m *Model) Reset() tea.Cmd {
+// keepTypedFilter leaves filter mode on connection changes. The filter typed
+// so far stays active (it is already applied to the message log).
+func (m *Model) keepTypedFilter() tea.Cmd {
+	if !m.isMsgLogFilterMode {
+		return nil
+	}
+	m.filter = m.ta.Value()
+	m.isMsgLogFilterMode = false
+	m.ta.Cursor.Style = styles.CursorStyle
+	m.ta.FocusedStyle.Prompt = styles.FocusedPromtStyle
+	return m.filterCmd()
+}
+
+// resetInput clears the input and switches to input mode. The message log
+// filter is not changed.
+func (m *Model) resetInput() tea.Cmd {
 	m.isMsgLogFilterMode = false
 	m.ta.Prompt = inputPromt
 	m.ta.Cursor.Style = styles.CursorStyle
 	m.ta.FocusedStyle.Prompt = styles.FocusedPromtStyle
-	filterStringCmd := func() tea.Msg {
-		return events.MsgLogFilterStringMsg("")
-	}
-	return tea.Batch(m.SetConnected(), filterStringCmd)
+	return m.SetConnected()
 }
 
+// leaveFilterMode switches back to input mode. With keep the typed filter
+// stays active, otherwise the filter is cleared.
+func (m *Model) leaveFilterMode(keep bool) tea.Cmd {
+	if keep {
+		m.filter = m.ta.Value()
+	} else {
+		m.filter = ""
+	}
+	return tea.Batch(m.resetInput(), m.filterCmd())
+}
+
+// filterCmd broadcasts the active filter to the message log.
+func (m *Model) filterCmd() tea.Cmd {
+	filter := m.filter
+	return func() tea.Msg {
+		return events.MsgLogFilterStringMsg(filter)
+	}
+}
+
+// SetFiltering switches to filter mode. The input is pre-filled with the
+// active filter so it can be edited.
 func (m *Model) SetFiltering() tea.Cmd {
 	m.isMsgLogFilterMode = true
 	m.ta.Reset()
@@ -342,9 +383,7 @@ func (m *Model) SetFiltering() tea.Cmd {
 	m.ta.Cursor.Style = styles.CursorFilterStyle
 	m.ta.FocusedStyle.Prompt = styles.FocusedSearchPromtStyle
 	m.ta.Placeholder = "Enter filter string..."
+	m.ta.SetValue(m.filter)
 	m.inputSuggestion = ""
-	filterStringCmd := func() tea.Msg {
-		return events.MsgLogFilterStringMsg("")
-	}
-	return tea.Batch(m.ta.Focus(), filterStringCmd)
+	return m.ta.Focus()
 }
