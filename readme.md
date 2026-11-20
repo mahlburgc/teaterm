@@ -46,64 +46,40 @@ tail -f <repo-path>/debug.log
 
 ## Configuration
 
-Teaterm reads its settings on startup from `~/.config/teaterm/teaterm.toml` (next to the command history `cmdhistroy.conf`).
+Teaterm config is stored at `~/.config/teaterm/teaterm.toml` and loaded on startup.
 The file is optional and is not created automatically. All settings are optional, unset values use the default.
-If the file contains an invalid value or an unknown setting, teaterm prints an error and exits.
 
-Example with all available settings (values shown are the defaults):
+Example with all available settings:
 
 ```toml
 [cmdhist]
 # How the command history behaves when opened with ctrl+r.
-#   "popup": ctrl+r opens the history, up/down move the selection,
-#            enter copies the selected command into the input and closes the history.
-#   "panel": the history is open on start, ctrl+r shows/hides it, it stays open while working,
-#            enter sends the input, up/down recall commands into the input (shell-style)
-#            and typing filters the history.
+#   "popup": ctrl+r opens the history, automatically closed on selection.
+#   "panel": the history is open on start, ctrl+r shows/hides it, it stays open while working.
+# Default: popup
 mode = "popup"
 
 # Height of the command history.
-# Either a number of rows (e.g. 15 or "15") or a percentage of the terminal height (e.g. "30%").
-# If not set: 10 rows, but at most a third of the terminal height.
-# The message log always keeps a minimum height of 3 rows.
-# height = 10
+# rows(10) or percentage (30%), min: 3
+# Default: 10
+height = 8
 
 [layout]
-# Border style of message log, command history and input.
-#   "full":    every section is drawn as a box.
-#   "minimal": no side borders, sections are only separated by a single line
-#              that holds the section title and info.
-borders = "full"
+# Border style.
+#   "full":    sections drawn as box
+#   "minimal": no side borders
+# Default: full
+borders = "minimal"
 ```
 
-| Setting          | Allowed values                | Default                         |
-| ---------------- | ----------------------------- | ------------------------------- |
-| `cmdhist.mode`   | `"popup"`, `"panel"`          | `"popup"`                       |
-| `cmdhist.height` | rows (`15`, `"15"`), `"1%"`..`"100%"` | 10 rows, max 1/3 of terminal |
-| `layout.borders` | `"full"`, `"minimal"`         | `"full"`                        |
+## Message Log Filter
 
-While the command history is open, its height can be changed during the session with `alt+↑` / `alt+↓`.
-These changes are not stored.
-
-## Filter the Message Log
-
-Press `ctrl+f` to switch the input into filter mode (`Filter: ` prompt). While typing, the message log only shows received lines that contain all entered words (case insensitive).
-
-- `enter` or `ctrl+f`: keep the filter and switch back to the normal input. You can send commands while the filter stays active.
-- `ctrl+f` again: edit the active filter (the input is pre-filled with it).
-- `esc` in filter mode: clear the filter. In normal input mode `esc` only clears the input.
-- `ctrl+c`: clear the input and the filter (in both modes).
-
-While a filter is active, it is shown in the message log title (`Messages · filter: ...`).
-Sent commands and teaterm's own INFO / ERROR lines are always shown in their normal colors, only received lines are filtered.
-The filter stays active over disconnect / reconnect.
+Press `ctrl+f` to switch the input into filter mode (`Filter: ` prompt).
+While typing, the message log only shows received lines that contain all entered words (case insensitive).
 
 ## Copy Text from the Message Log
 
 Select text in the message log by pressing the left mouse button and dragging over it.
-On release, the selected text is copied to the clipboard and the message log footer shows `copied N chars`.
-While dragging, the message log does not scroll on new messages. Dragging beyond the top or bottom edge scrolls the log.
-
 Teaterm copies via the system clipboard and via OSC 52, so at least one of these is needed:
 
 - `wl-copy` (Wayland), `xclip` or `xsel` (X11) installed, or
@@ -111,7 +87,9 @@ Teaterm copies via the system clipboard and via OSC 52, so at least one of these
 
 ## External Editor Support
 
-During a teaterm session you can open an external editor of your choice with the current message log by pressing `ctrl+e`. Make sure your `EDITOR` variable is exported in your shell config file. Otherwise `vim` will be called.
+During a teaterm session you can open an external editor of your choice with the current message
+log by pressing `ctrl+e`. Make sure your `EDITOR` variable is exported in your shell config file.
+Otherwise `vim` will be called.
 
 E.g. when using `micro` and `zsh`:
 
